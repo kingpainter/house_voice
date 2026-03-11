@@ -1,0 +1,60 @@
+rules:
+  # ── Bronze ────────────────────────────────────────────────────────────────
+
+  # Integration can be set up via the UI
+  config_flow: done
+
+  # Basic end-user documentation exists
+  docs_high_level_description: done
+
+  # Automated tests for setup/unload
+  test_coverage: done
+
+  # Uses config entries only (no YAML setup)
+  config_entry_only_config_schema: done
+
+  # No sensitive data logged
+  log_no_sensitive_data: done
+
+  # Services validate all input
+  service_validate_input: done
+
+  # ── Silver ────────────────────────────────────────────────────────────────
+
+  # Raises ConfigEntryNotReady when setup fails
+  config_entry_not_ready: done
+
+  # Uses HA-standard exceptions (ServiceValidationError / HomeAssistantError)
+  raise_exceptions: done
+
+  # Active code owner listed in manifest.json
+  code_owner: done
+
+  # Diagnostics support
+  diagnostics: done
+
+  # System health support
+  system_health: done
+
+  # ── Gold (not yet implemented) ────────────────────────────────────────────
+
+  # Auto-discovery
+  auto_discovery:
+    status: exempt
+    comment: House Voice is a local service without network discovery. Manual setup via UI is sufficient.
+
+  # Reconfigure flow
+  reconfigure_step:
+    status: exempt
+    comment: Integration has no configurable options beyond installation.
+
+  # Translations for all strings
+  translations:
+    status: todo
+
+  # Full test coverage
+  test_full_coverage:
+    status: todo
+
+  # Repairs for known issues
+  repairs: done

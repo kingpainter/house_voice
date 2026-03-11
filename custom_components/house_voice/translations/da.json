@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "House Voice Manager",
+        "description": "Tilføj House Voice Manager til Home Assistant.\n\nKlik **Send** for at installere."
+      }
+    },
+    "abort": {
+      "already_configured": "House Voice Manager er allerede installeret."
+    }
+  },
+  "issues": {
+    "ultra_tts_missing": {
+      "title": "script.ultra_tts er ikke tilgængelig",
+      "description": "House Voice Manager kunne ikke kalde `script.ultra_tts`. Sørg for at scriptet findes og er korrekt konfigureret i Home Assistant. Voice events kan ikke afspilles, før dette er løst."
+    }
+  },
+  "exceptions": {
+    "event_not_found": {
+      "message": "House Voice event '{event_id}' blev ikke fundet. Sørg for at eventet findes i House Voice panelet."
+    },
+    "no_speakers": {
+      "message": "House Voice event '{event_id}' har ingen højttalere konfigureret. Tilføj mindst én højttaler i House Voice panelet."
+    },
+    "ultra_tts_failed": {
+      "message": "House Voice kunne ikke kalde script.ultra_tts for event '{event_id}'. Tjek at scriptet findes og fungerer korrekt."
+    }
+  },
+  "services": {
+    "say": {
+      "name": "Afspil voice event",
+      "description": "Afspil et gemt voice event via dets ID.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "ID på det voice event der skal afspilles."
+        }
+      }
+    },
+    "add_event": {
+      "name": "Tilføj voice event",
+      "description": "Tilføj eller opdater et voice event i storage.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "Unikt ID for dette voice event."
+        },
+        "message": {
+          "name": "Besked",
+          "description": "TTS-beskedteksten. Understøtter Jinja2 templates."
+        },
+        "speakers": {
+          "name": "Højttalere",
+          "description": "En eller flere media_player entity ID'er der skal tale."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritetsniveau: info, normal eller critical."
+        },
+        "volume": {
+          "name": "Volumen",
+          "description": "Volumen mellem 0.05 og 1.0."
+        }
+      }
+    },
+    "delete_event": {
+      "name": "Slet voice event",
+      "description": "Slet et voice event fra storage.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "ID på det voice event der skal slettes."
+        }
+      }
+    },
+    "test_event": {
+      "name": "Test voice event",
+      "description": "Test-afspil et gemt voice event med det samme.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "ID på det voice event der skal testes."
+        }
+      }
+    }
+  }
+}

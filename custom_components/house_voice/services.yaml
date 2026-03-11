@@ -1,0 +1,29 @@
+say:
+  name: Say voice event
+  description: Speak a house voice message
+  fields:
+    event:
+      required: true
+      example: dishwasher_open
+
+add_event:
+  name: Add voice event
+  fields:
+    event:
+      example: dishwasher_open
+    message:
+      example: Opvaskeren er åben
+    speakers:
+      example: media_player.kokken
+
+delete_event:
+  name: Delete voice event
+  fields:
+    event:
+      example: dishwasher_open
+
+test_event:
+  name: Test voice event
+  fields:
+    event:
+      example: dishwasher_open

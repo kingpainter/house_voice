@@ -1,0 +1,7 @@
+# Test dependencies for House Voice Manager
+pytest==8.3.5
+pytest-asyncio==0.24.0
+pytest-homeassistant-custom-component==0.13.192
+homeassistant==2026.1.0
+voluptuous
+aiohttp

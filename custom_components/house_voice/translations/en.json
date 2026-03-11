@@ -1,0 +1,88 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "House Voice Manager",
+        "description": "Add House Voice Manager to Home Assistant.\n\nClick **Submit** to install."
+      }
+    },
+    "abort": {
+      "already_configured": "House Voice Manager is already installed."
+    }
+  },
+  "issues": {
+    "ultra_tts_missing": {
+      "title": "script.ultra_tts is not available",
+      "description": "House Voice Manager failed to call `script.ultra_tts`. Make sure the script exists and is correctly configured in Home Assistant. Voice events cannot be spoken until this is resolved."
+    }
+  },
+  "exceptions": {
+    "event_not_found": {
+      "message": "House Voice event '{event_id}' was not found. Make sure the event exists in the House Voice panel."
+    },
+    "no_speakers": {
+      "message": "House Voice event '{event_id}' has no speakers configured. Add at least one speaker in the House Voice panel."
+    },
+    "ultra_tts_failed": {
+      "message": "House Voice failed to call script.ultra_tts for event '{event_id}'. Check that the script exists and is working correctly."
+    }
+  },
+  "services": {
+    "say": {
+      "name": "Say voice event",
+      "description": "Speak a stored voice event by ID.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "The ID of the voice event to speak."
+        }
+      }
+    },
+    "add_event": {
+      "name": "Add voice event",
+      "description": "Add or update a voice event in storage.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "Unique identifier for this voice event."
+        },
+        "message": {
+          "name": "Message",
+          "description": "The TTS message text. Supports Jinja2 templates."
+        },
+        "speakers": {
+          "name": "Speakers",
+          "description": "One or more media_player entity IDs to speak on."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority level: info, normal or critical."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume level between 0.05 and 1.0."
+        }
+      }
+    },
+    "delete_event": {
+      "name": "Delete voice event",
+      "description": "Delete a voice event from storage.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "The ID of the voice event to delete."
+        }
+      }
+    },
+    "test_event": {
+      "name": "Test voice event",
+      "description": "Test-speak a stored voice event immediately.",
+      "fields": {
+        "event": {
+          "name": "Event ID",
+          "description": "The ID of the voice event to test."
+        }
+      }
+    }
+  }
+}

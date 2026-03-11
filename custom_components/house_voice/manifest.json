@@ -1,0 +1,12 @@
+{
+  "domain": "house_voice",
+  "name": "House Voice Manager",
+  "version": "2.0.0",
+  "documentation": "https://github.com/yourrepo/house_voice",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@you"],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "quality_scale": "silver"
+}

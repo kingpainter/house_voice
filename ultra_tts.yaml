@@ -1,0 +1,150 @@
+############################################
+# ULTRA TTS v4 – MUSIC ASSISTANT EDITION
+############################################
+
+input_text:
+
+  tts_last_message:
+    name: Last TTS message
+
+
+input_datetime:
+
+  tts_last_time:
+    name: Last TTS time
+    has_date: true
+    has_time: true
+
+
+script:
+
+  ultra_tts:
+
+    alias: Ultra TTS Manager
+    mode: queued
+    max: 20
+
+    fields:
+
+      speaker:
+        description: media_player enhed eller liste
+
+      message:
+        description: tekst der skal læses
+
+      volume:
+        description: normal volumen
+
+      priority:
+        description: info / normal / critical
+
+
+    variables:
+
+      last_message: "{{ states('input_text.tts_last_message') }}"
+      last_time: "{{ states('input_datetime.tts_last_time') }}"
+
+      seconds_since_last: >
+        {{ (as_timestamp(now()) - as_timestamp(last_time)) | int(999) }}
+
+      spam_detected: >
+        {{ message == last_message and seconds_since_last < 20 }}
+
+      original_volume: >
+        {{ state_attr(speaker,'volume_level') | float(0.3) }}
+
+      duck_volume: >
+        {% if priority == 'critical' %}
+        0
+        {% elif priority == 'normal' %}
+        {{ original_volume * 0.25 }}
+        {% else %}
+        {{ original_volume * 0.4 }}
+        {% endif %}
+
+      message_length: "{{ message | length }}"
+
+      dynamic_delay: >
+        {% set seconds = (message_length / 12) | round(0,'ceil') %}
+        {{ [3, seconds] | max }}
+
+
+    sequence:
+
+      ################################
+      # Anti spam
+      ################################
+
+      - choose:
+
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ spam_detected and priority != 'critical' }}
+
+            sequence:
+              - stop: "Spam TTS filtreret"
+
+
+      ################################
+      # Gem sidste besked
+      ################################
+
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.tts_last_message
+        data:
+          value: "{{ message }}"
+
+
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tts_last_time
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+
+      ################################
+      # Duck musik
+      ################################
+
+      - service: media_player.volume_set
+        target:
+          entity_id: "{{ speaker }}"
+        data:
+          volume_level: "{{ duck_volume }}"
+
+
+      - delay: "00:00:01"
+
+
+      ################################
+      # TTS besked
+      ################################
+
+      - service: tts.speak
+        target:
+          entity_id: tts.home_assistant_cloud
+        data:
+          cache: false
+          message: "{{ message }}"
+          media_player_entity_id: "{{ speaker }}"
+
+
+      ################################
+      # Vent på besked
+      ################################
+
+      - delay:
+          seconds: "{{ dynamic_delay }}"
+
+
+      ################################
+      # Restore volumen
+      ################################
+
+      - service: media_player.volume_set
+        target:
+          entity_id: "{{ speaker }}"
+        data:
+          volume_level: "{{ original_volume }}"
