@@ -9,7 +9,6 @@ import logging
 import os
 
 from homeassistant.components import frontend, panel_custom
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -25,6 +24,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# StaticPathConfig was introduced in HA 2024.2 – fall back to legacy API if not available
+try:
+    from homeassistant.components.http import StaticPathConfig
+    _HAS_STATIC_PATH_CONFIG = True
+except ImportError:
+    _HAS_STATIC_PATH_CONFIG = False
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:
@@ -47,9 +53,14 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         cache_bust = 0
 
     # Register static HTTP path so HA can serve the JS file
-    await hass.http.async_register_static_paths([
-        StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
-    ])
+    if _HAS_STATIC_PATH_CONFIG:
+        await hass.http.async_register_static_paths([
+            StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
+        ])
+    else:
+        # Legacy API (HA < 2024.2)
+        hass.http.register_static_path(PANEL_URL, panel_file, cache_headers=False)
+
     _LOGGER.info("House Voice panel static path registered: %s → %s", PANEL_URL, panel_file)
 
     # Register the custom sidebar panel
