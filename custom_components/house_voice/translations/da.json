@@ -10,6 +10,18 @@
       "already_configured": "House Voice Manager er allerede installeret."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "House Voice – Indstillinger",
+        "description": "Konfigurer stille timer. I stille timer afspilles kun **critical** prioritets-beskeder.",
+        "data": {
+          "quiet_hours_start": "Stille timer starter (time, 0–23)",
+          "quiet_hours_end":   "Stille timer slutter (time, 0–23)"
+        }
+      }
+    }
+  },
   "issues": {
     "ultra_tts_missing": {
       "title": "script.ultra_tts er ikke tilgængelig",
@@ -38,6 +50,28 @@
         }
       }
     },
+    "say_text": {
+      "name": "Afspil tekst",
+      "description": "Afspil en fritekst-besked uden et gemt event. Understøtter Jinja2 templates.",
+      "fields": {
+        "message": {
+          "name": "Besked",
+          "description": "Teksten der skal afspilles. Understøtter Jinja2 templates."
+        },
+        "speakers": {
+          "name": "Højttalere",
+          "description": "En eller flere media_player entity ID'er eller gruppe-referencer (prefix med 'group:')."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritetsniveau: info, normal eller critical."
+        },
+        "volume": {
+          "name": "Volumen",
+          "description": "Volumen mellem 0.05 og 1.0."
+        }
+      }
+    },
     "add_event": {
       "name": "Tilføj voice event",
       "description": "Tilføj eller opdater et voice event i storage.",
@@ -52,7 +86,7 @@
         },
         "speakers": {
           "name": "Højttalere",
-          "description": "En eller flere media_player entity ID'er der skal tale."
+          "description": "En eller flere media_player entity ID'er eller gruppe-referencer (prefix med 'group:')."
         },
         "priority": {
           "name": "Prioritet",
@@ -61,6 +95,10 @@
         "volume": {
           "name": "Volumen",
           "description": "Volumen mellem 0.05 og 1.0."
+        },
+        "condition": {
+          "name": "Betingelse",
+          "description": "Valgfrit Jinja2 template der skal evaluere til sandt for at eventet afspilles. Lad feltet stå tomt for altid at afspille."
         }
       }
     },
@@ -76,7 +114,7 @@
     },
     "test_event": {
       "name": "Test voice event",
-      "description": "Test-afspil et gemt voice event med det samme.",
+      "description": "Test-afspil et gemt voice event med det samme, uden spam-filter.",
       "fields": {
         "event": {
           "name": "Event ID",

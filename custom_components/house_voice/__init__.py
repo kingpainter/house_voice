@@ -1,4 +1,4 @@
-# VERSION = "2.1.0"
+# VERSION = "2.2.0"
 # File: __init__.py
 # Description: House Voice Manager setup via config entry (UI-based, no YAML).
 #              Registers services, WebSocket API, sidebar panel and sensor.
@@ -14,7 +14,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN, SERVICE_SAY, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST, VERSION
+from .const import (
+    DEFAULT_PRIORITY,
+    DEFAULT_VOLUME,
+    DOMAIN,
+    PRIORITIES,
+    SERVICE_ADD,
+    SERVICE_DELETE,
+    SERVICE_SAY,
+    SERVICE_SAY_TEXT,
+    SERVICE_TEST,
+    VERSION,
+)
+from .groups import HouseVoiceGroups
 from .panel import async_register_panel, async_unregister_panel
 from .storage import HouseVoiceStorage
 from .voice_engine import VoiceEngine
@@ -22,9 +34,7 @@ from .websocket import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
-# Tell HA this integration is set up via config entries only – no YAML setup
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
 PLATFORMS = [Platform.SENSOR]
 
 
@@ -32,19 +42,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up House Voice Manager from a config entry."""
 
     storage = HouseVoiceStorage(hass)
+    groups  = HouseVoiceGroups(hass)
 
     try:
         await storage.async_load()
+        await groups.async_load()
     except Exception as err:
         raise ConfigEntryNotReady(
             f"House Voice: failed to load storage: {err}"
         ) from err
 
-    engine = VoiceEngine(hass, storage)
+    engine = VoiceEngine(hass, storage, groups, entry)
+    engine.start()
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN] = {
         "storage":           storage,
+        "groups":            groups,
         "engine":            engine,
         "sensor":            None,
         "_panel_registered": False,
@@ -64,15 +78,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("House Voice: service 'say' failed for '%s': %s", event_id, err)
             raise
 
+    async def handle_say_text(call) -> None:
+        """Handle house_voice.say_text – speak an ad-hoc text message."""
+        try:
+            await engine.say_text(
+                message=call.data["message"],
+                speakers=call.data["speakers"],
+                priority=call.data.get("priority", DEFAULT_PRIORITY),
+                volume=call.data.get("volume", DEFAULT_VOLUME),
+            )
+        except Exception as err:
+            _LOGGER.error("House Voice: service 'say_text' failed: %s", err)
+            raise
+
     async def handle_add(call) -> None:
         """Handle house_voice.add_event – add or update a stored event."""
         event_id = call.data["event"]
         try:
             await storage.add_event(event_id, {
-                "message":  call.data["message"],
-                "speakers": call.data["speakers"],
-                "priority": call.data.get("priority", "normal"),
-                "volume":   call.data.get("volume", 0.35),
+                "message":   call.data["message"],
+                "speakers":  call.data["speakers"],
+                "priority":  call.data.get("priority", DEFAULT_PRIORITY),
+                "volume":    call.data.get("volume", DEFAULT_VOLUME),
+                "condition": call.data.get("condition", ""),
             })
             _LOGGER.info("House Voice: event '%s' saved via service", event_id)
         except Exception as err:
@@ -93,7 +121,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Handle house_voice.test_event – speak immediately, bypassing spam filter."""
         event_id = call.data["event"]
         try:
-            # bypass_spam=True so test always plays regardless of recent calls
             await engine.say(event_id, bypass_spam=True)
         except Exception as err:
             _LOGGER.error("House Voice: service 'test_event' failed for '%s': %s", event_id, err)
@@ -104,13 +131,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=vol.Schema({vol.Required("event"): cv.string})
     )
     hass.services.async_register(
+        DOMAIN, SERVICE_SAY_TEXT, handle_say_text,
+        schema=vol.Schema({
+            vol.Required("message"):  cv.string,
+            vol.Required("speakers"): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional("priority", default=DEFAULT_PRIORITY): vol.In(list(PRIORITIES)),
+            vol.Optional("volume",   default=DEFAULT_VOLUME):   vol.All(vol.Coerce(float), vol.Range(min=0.05, max=1.0)),
+        })
+    )
+    hass.services.async_register(
         DOMAIN, SERVICE_ADD, handle_add,
         schema=vol.Schema({
             vol.Required("event"):    cv.string,
             vol.Required("message"):  cv.string,
             vol.Required("speakers"): vol.All(cv.ensure_list, [cv.string]),
-            vol.Optional("priority", default="normal"): vol.In(["info", "normal", "critical"]),
-            vol.Optional("volume",   default=0.35): vol.All(vol.Coerce(float), vol.Range(min=0.05, max=1.0)),
+            vol.Optional("priority",  default=DEFAULT_PRIORITY): vol.In(list(PRIORITIES)),
+            vol.Optional("volume",    default=DEFAULT_VOLUME):   vol.All(vol.Coerce(float), vol.Range(min=0.05, max=1.0)),
+            vol.Optional("condition", default=""):               cv.string,
         })
     )
     hass.services.async_register(
@@ -135,17 +172,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload House Voice Manager config entry."""
 
-    # Unload sensor platform
-    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    data = hass.data.get(DOMAIN, {})
 
-    # Remove sidebar panel
+    # Stop queue worker
+    engine = data.get("engine")
+    if engine:
+        await engine.stop()
+
+    await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     async_unregister_panel(hass)
 
-    # Remove services
-    for service in (SERVICE_SAY, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST):
+    for service in (SERVICE_SAY, SERVICE_SAY_TEXT, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST):
         hass.services.async_remove(DOMAIN, service)
 
-    # Clear runtime data
     hass.data.pop(DOMAIN, None)
 
     _LOGGER.info("House Voice Manager v%s unloaded", VERSION)

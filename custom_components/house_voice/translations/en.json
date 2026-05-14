@@ -10,6 +10,18 @@
       "already_configured": "House Voice Manager is already installed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "House Voice – Options",
+        "description": "Configure quiet hours. During quiet hours only **critical** priority events are spoken.",
+        "data": {
+          "quiet_hours_start": "Quiet hours start (hour, 0–23)",
+          "quiet_hours_end":   "Quiet hours end (hour, 0–23)"
+        }
+      }
+    }
+  },
   "issues": {
     "ultra_tts_missing": {
       "title": "script.ultra_tts is not available",
@@ -38,6 +50,28 @@
         }
       }
     },
+    "say_text": {
+      "name": "Say text",
+      "description": "Speak an ad-hoc text message without a stored event. Supports Jinja2 templates.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "The text to speak. Supports Jinja2 templates."
+        },
+        "speakers": {
+          "name": "Speakers",
+          "description": "One or more media_player entity IDs or group references (prefix with 'group:')."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority level: info, normal or critical."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume level between 0.05 and 1.0."
+        }
+      }
+    },
     "add_event": {
       "name": "Add voice event",
       "description": "Add or update a voice event in storage.",
@@ -52,7 +86,7 @@
         },
         "speakers": {
           "name": "Speakers",
-          "description": "One or more media_player entity IDs to speak on."
+          "description": "One or more media_player entity IDs or group references (prefix with 'group:')."
         },
         "priority": {
           "name": "Priority",
@@ -61,6 +95,10 @@
         "volume": {
           "name": "Volume",
           "description": "Volume level between 0.05 and 1.0."
+        },
+        "condition": {
+          "name": "Condition",
+          "description": "Optional Jinja2 template that must evaluate to true for the event to play. Leave empty to always play."
         }
       }
     },
@@ -76,7 +114,7 @@
     },
     "test_event": {
       "name": "Test voice event",
-      "description": "Test-speak a stored voice event immediately.",
+      "description": "Test-speak a stored voice event immediately, bypassing the spam filter.",
       "fields": {
         "event": {
           "name": "Event ID",

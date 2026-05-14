@@ -1,18 +1,25 @@
-# VERSION = "2.0.0"
+# VERSION = "2.2.0"
 # File: config_flow.py
-# Description: Config Flow for House Voice Manager.
-#              Appears in the "Add Integration" page.
-#              No fields – user just clicks Submit to install.
-#              Prevents duplicate entries.
+# Description: Config Flow + Options Flow for House Voice Manager.
+#              Config flow: no fields – user just clicks Submit to install.
+#              Options flow: configure quiet hours start/end time.
 
 from __future__ import annotations
 
 import logging
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
 
-from .const import DOMAIN
+from .const import (
+    CONF_QUIET_END,
+    CONF_QUIET_START,
+    DEFAULT_QUIET_END,
+    DEFAULT_QUIET_START,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,4 +47,43 @@ class HouseVoiceConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({}),
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow handler."""
+        return HouseVoiceOptionsFlow(config_entry)
+
+
+class HouseVoiceOptionsFlow(OptionsFlow):
+    """Handle House Voice options – quiet hours configuration."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> FlowResult:
+        """Show the options form."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_start = self._config_entry.options.get(CONF_QUIET_START, DEFAULT_QUIET_START)
+        current_end   = self._config_entry.options.get(CONF_QUIET_END,   DEFAULT_QUIET_END)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required(CONF_QUIET_START, default=current_start): vol.All(
+                    int, vol.Range(min=0, max=23)
+                ),
+                vol.Required(CONF_QUIET_END, default=current_end): vol.All(
+                    int, vol.Range(min=0, max=23)
+                ),
+            }),
+            description_placeholders={
+                "quiet_start": str(current_start),
+                "quiet_end":   str(current_end),
+            },
         )
