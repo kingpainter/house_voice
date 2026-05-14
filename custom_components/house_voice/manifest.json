@@ -1,7 +1,7 @@
 {
   "domain": "house_voice",
   "name": "House Voice Manager",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "documentation": "https://github.com/yourrepo/house_voice",
   "requirements": [],
   "dependencies": [],

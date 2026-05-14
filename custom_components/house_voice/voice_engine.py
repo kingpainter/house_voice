@@ -1,4 +1,4 @@
-# VERSION = "2.0.0"
+# VERSION = "2.1.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager
 
@@ -29,8 +29,9 @@ def _is_quiet_hours() -> bool:
 
 
 class VoiceEngine:
+    """Handles TTS routing, spam filtering, quiet hours and template rendering."""
 
-    def __init__(self, hass, storage):
+    def __init__(self, hass, storage) -> None:
         self.hass = hass
         self.storage = storage
         self._last_spoken: dict[str, float] = {}
@@ -41,22 +42,26 @@ class VoiceEngine:
         for k in stale:
             del self._last_spoken[k]
 
-    async def say(self, event_id: str) -> None:
+    async def say(self, event_id: str, bypass_spam: bool = False) -> None:
+        """Speak a voice event by ID.
 
+        Args:
+            event_id:    The ID of the stored voice event to speak.
+            bypass_spam: If True, skip the spam filter (used for test playback).
+        """
         event = self.storage.get_event(event_id)
 
         if not event:
-            # User error – wrong event ID → ServiceValidationError (no stack trace)
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="event_not_found",
                 translation_placeholders={"event_id": event_id},
             )
 
-        message = event.get("message", "")
-        speakers = event.get("speakers", [])
-        volume = event.get("volume", 0.35)
-        priority = event.get("priority", "normal")
+        message: str  = event.get("message", "")
+        speakers       = event.get("speakers", [])
+        volume: float  = event.get("volume", 0.35)
+        priority: str  = event.get("priority", "normal")
 
         # Guard: empty speakers – user configuration error
         if not speakers:
@@ -66,18 +71,19 @@ class VoiceEngine:
                 translation_placeholders={"event_id": event_id},
             )
 
-        # Spam filter – block same event within 30 seconds
+        # Spam filter – block same event within 30 seconds (skipped for test calls)
         now = time.monotonic()
         self._cleanup_last_spoken(now)
-        last = self._last_spoken.get(event_id)
-        if last is not None and (now - last) < SPAM_FILTER_SECONDS:
-            remaining = int(SPAM_FILTER_SECONDS - (now - last))
-            _LOGGER.warning(
-                "House Voice: Spam filter blocked '%s' – try again in %d seconds",
-                event_id,
-                remaining,
-            )
-            return
+        if not bypass_spam:
+            last = self._last_spoken.get(event_id)
+            if last is not None and (now - last) < SPAM_FILTER_SECONDS:
+                remaining = int(SPAM_FILTER_SECONDS - (now - last))
+                _LOGGER.warning(
+                    "House Voice: Spam filter blocked '%s' – try again in %d seconds",
+                    event_id,
+                    remaining,
+                )
+                return
 
         # Quiet hours – block non-critical messages between 22:00 and 07:00
         if _is_quiet_hours() and priority != "critical":
@@ -104,9 +110,11 @@ class VoiceEngine:
         if isinstance(speakers, list):
             speaker_str = speakers[0] if len(speakers) == 1 else ", ".join(speakers)
         else:
-            speaker_str = speakers
+            speaker_str = str(speakers)
 
-        # Call ultra_tts – blocking=True so we can catch script errors
+        # Call ultra_tts – non-blocking to avoid stalling HA's event loop.
+        # ultra_tts can run 3–30+ seconds; blocking=True would freeze the loop.
+        # Errors are surfaced via the HA Repair issue mechanism instead.
         try:
             await self.hass.services.async_call(
                 "script",
@@ -117,11 +125,9 @@ class VoiceEngine:
                     "volume":   volume,
                     "priority": priority,
                 },
-                blocking=True,
+                blocking=False,
             )
         except Exception as err:
-            # Communication/script failure → HomeAssistantError (stack trace logged)
-            # Also raise a HA repair issue so the user is notified in the UI
             from .repairs import raise_issue_ultra_tts_missing
             raise_issue_ultra_tts_missing(self.hass)
             raise HomeAssistantError(
@@ -130,10 +136,10 @@ class VoiceEngine:
                 translation_placeholders={"event_id": event_id},
             ) from err
 
-        # Increment statistics sensor – safely
+        # Increment statistics sensor – safely, never let this crash TTS
         try:
             sensor = self.hass.data.get(DOMAIN, {}).get("sensor")
             if sensor is not None:
                 sensor.increment()
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001
             _LOGGER.warning("House Voice: Failed to increment sensor: %s", err)

@@ -1,4 +1,4 @@
-# VERSION = "2.0.0"
+# VERSION = "2.1.0"
 # File: __init__.py
 # Description: House Voice Manager setup via config entry (UI-based, no YAML).
 #              Registers services, WebSocket API, sidebar panel and sensor.
@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN, SERVICE_SAY, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST
+from .const import DOMAIN, SERVICE_SAY, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST, VERSION
 from .panel import async_register_panel, async_unregister_panel
 from .storage import HouseVoiceStorage
 from .voice_engine import VoiceEngine
@@ -55,7 +55,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Register HA services ───────────────────────────────────────────────
 
-    async def handle_say(call):
+    async def handle_say(call) -> None:
+        """Handle house_voice.say – speak a stored event."""
         event_id = call.data["event"]
         try:
             await engine.say(event_id)
@@ -63,7 +64,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("House Voice: service 'say' failed for '%s': %s", event_id, err)
             raise
 
-    async def handle_add(call):
+    async def handle_add(call) -> None:
+        """Handle house_voice.add_event – add or update a stored event."""
         event_id = call.data["event"]
         try:
             await storage.add_event(event_id, {
@@ -77,7 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("House Voice: service 'add_event' failed for '%s': %s", event_id, err)
             raise
 
-    async def handle_delete(call):
+    async def handle_delete(call) -> None:
+        """Handle house_voice.delete_event – remove a stored event."""
         event_id = call.data["event"]
         try:
             await storage.delete_event(event_id)
@@ -86,10 +89,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("House Voice: service 'delete_event' failed for '%s': %s", event_id, err)
             raise
 
-    async def handle_test(call):
+    async def handle_test(call) -> None:
+        """Handle house_voice.test_event – speak immediately, bypassing spam filter."""
         event_id = call.data["event"]
         try:
-            await engine.say(event_id)
+            # bypass_spam=True so test always plays regardless of recent calls
+            await engine.say(event_id, bypass_spam=True)
         except Exception as err:
             _LOGGER.error("House Voice: service 'test_event' failed for '%s': %s", event_id, err)
             raise
@@ -123,7 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Register sidebar panel ─────────────────────────────────────────────
     await async_register_panel(hass)
 
-    _LOGGER.info("House Voice Manager v2.0.0 setup complete")
+    _LOGGER.info("House Voice Manager v%s setup complete", VERSION)
     return True
 
 
@@ -143,5 +148,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Clear runtime data
     hass.data.pop(DOMAIN, None)
 
-    _LOGGER.info("House Voice Manager unloaded")
+    _LOGGER.info("House Voice Manager v%s unloaded", VERSION)
     return True

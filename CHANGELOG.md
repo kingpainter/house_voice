@@ -4,6 +4,40 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [2.1.0] – 2026-05-14
+
+### Changed
+- `voice_engine.py`: `ultra_tts` called with `blocking=False` – prevents stalling HA's
+  async event loop during long-running TTS scripts (3–30+ seconds)
+- `voice_engine.py`: `say()` now accepts `bypass_spam: bool = False` parameter –
+  test calls explicitly skip the spam filter instead of implicitly sharing the same path
+- `__init__.py`: `handle_test` uses `bypass_spam=True` – test always plays regardless
+  of recent calls to the same event
+- `__init__.py`: setup/unload log messages now read `VERSION` from `const.py` instead
+  of a hardcoded string
+- `__init__.py`: all service handlers have docstrings
+- `websocket.py`: `ws_save_event` schema uses `vol.All(list, vol.Length(min=1))` for
+  speakers and `vol.In(_VALID_PRIORITIES)` for priority – validation moved into the
+  voluptuous schema instead of manual `if/return` guards
+- `websocket.py`: `ws_get_media_players` rewritten as a list comprehension
+- `websocket.py`: `ws_test_event` catches `ServiceValidationError` separately and
+  returns `"invalid_event"` error code so the panel can show a meaningful message
+- `websocket.py`: `_get_storage` / `_get_engine` have docstrings
+- `storage.py`: full type hints (`dict[str, dict]`, `str | None`) and docstrings on
+  all methods; `async_load` guards against non-dict return values
+- `house-voice-panel.js`: Indeklima Designer language applied – House Voice accent
+  teal `#14b8a6` / emerald `#34d399`, DM Sans + DM Mono typography, gradient header
+  icon, dark-theme tokens with HA CSS variable fallbacks, redesigned event cards,
+  stats pills, buttons, form overlay and panel-topbar / panel-scroll layout
+
+### Fixed
+- `storage.py`: `async_load` now guards against corrupt storage returning a non-dict
+  value (e.g. after manual file edits)
+- `voice_engine.py`: speakers coerced to `str()` as fallback when not a list, instead
+  of passing the raw value to `ultra_tts`
+
+---
+
 ## [2.0.0] – 2026-03-11
 
 ### Added
