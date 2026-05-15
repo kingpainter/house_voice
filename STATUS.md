@@ -1,8 +1,8 @@
 # House Voice – Project Status
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Date:** 2026-05-14
-**Status:** Active development – v2.1.0 complete, Gold tier in progress
+**Status:** Active development – v2.2.0 complete, Gold tier in progress
 
 ---
 
@@ -12,8 +12,8 @@
 |-------|--------|
 | v1.0 – Core TTS service | ✅ Complete |
 | v2.0 – UI Panel + WebSocket API | ✅ Complete |
-| v3.0 – Smart features | ✅ Complete |
 | v2.1 – Stability + code quality | ✅ Complete |
+| v2.2 – Speaker groups, queue, conditions, history | ✅ Complete |
 | Gold tier compliance | 🔄 In progress (`test_full_coverage` remaining) |
 
 ---
@@ -22,49 +22,56 @@
 
 | File | Version | Notes |
 |------|---------|-------|
-| `__init__.py` | 2.1.0 | Service handler docstrings; log uses `VERSION` from const |
-| `manifest.json` | 2.1.0 | Bumped to 2.1.0 |
-| `const.py` | 2.1.0 | `VERSION = "2.1.0"` |
-| `services.yaml` | 2.0.0 | Unchanged |
-| `voice_engine.py` | 2.1.0 | `blocking=False`; `bypass_spam` param; type hints; docstring |
-| `storage.py` | 2.1.0 | Full type hints + docstrings; non-dict guard in `async_load` |
+| `__init__.py` | 2.2.0 | +`say_text` service, groups init, engine lifecycle, `say_text` handler |
+| `manifest.json` | 2.2.0 | Bumped |
+| `const.py` | 2.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
+| `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
+| `voice_engine.py` | 2.2.0 | +queue, groups, conditions, history, `say_text`, configurable quiet hours |
+| `groups.py` | 2.2.0 | NEW – speaker group storage + `resolve_speakers()` |
+| `storage.py` | 2.1.0 | Unchanged |
 | `panel.py` | 2.0.0 | Unchanged |
-| `websocket.py` | 2.1.0 | `vol.In` + `vol.Length` in schema; `ServiceValidationError` caught in test |
+| `websocket.py` | 2.2.0 | 9 commands: +`get_groups`, `save_group`, `delete_group`, `get_history` |
 | `sensor.py` | 2.0.0 | Unchanged |
-| `system_health.py` | 2.0.0 | Unchanged |
-| `diagnostics.py` | 2.0.0 | Unchanged |
+| `system_health.py` | 2.2.0 | +`groups_count`, `queue_size` |
+| `diagnostics.py` | 2.2.0 | +`groups_count`, `group_ids`, `history_count`, quiet hours config |
 | `repairs.py` | 2.0.0 | Unchanged |
-| `strings.json` | 2.0.0 | Unchanged |
+| `strings.json` | 2.2.0 | +Options Flow, `say_text` service, `condition` field |
 | `quality_scale.yaml` | 2.0.0 | Unchanged |
-| `house-voice-panel.js` | 2.0.1 | Indeklima Designer language – teal/emerald, DM Sans/Mono, dark tokens |
-| `translations/en.json` | 2.0.0 | Unchanged |
-| `translations/da.json` | 2.0.0 | Unchanged |
+| `house-voice-panel.js` | 2.2.0 | 3-tab layout: Events / Groups / History; condition badge; group picker |
+| `translations/en.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
+| `translations/da.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
 | `hacs.json` | 2.0.0 | Unchanged |
 | `.github/workflows/tests.yml` | 2.0.0 | Unchanged |
 | `requirements-test.txt` | 2.0.0 | Unchanged |
+| `blueprints/house_voice_say.yaml` | 2.2.0 | NEW – automation blueprint |
 
 ---
 
 ## Services
 
-| Service | Registered | Validated | Notes |
-|---------|------------|-----------|-------|
-| `house_voice.say` | ✅ | ✅ | `vol.Schema` + `ServiceValidationError` |
-| `house_voice.add_event` | ✅ | ✅ | Full `vol.Schema` incl. priority + volume range |
-| `house_voice.delete_event` | ✅ | ✅ | `vol.Schema` |
-| `house_voice.test_event` | ✅ | ✅ | Calls `say(bypass_spam=True)` – always plays |
+| Service | Registered | Schema validated | Notes |
+|---------|------------|-----------------|-------|
+| `house_voice.say` | ✅ | ✅ | Speaks stored event |
+| `house_voice.say_text` | ✅ | ✅ | Ad-hoc text, group refs, Jinja2 |
+| `house_voice.add_event` | ✅ | ✅ | +`condition` field |
+| `house_voice.delete_event` | ✅ | ✅ | |
+| `house_voice.test_event` | ✅ | ✅ | `bypass_spam=True` |
 
 ---
 
-## WebSocket API (websocket.py)
+## WebSocket API (websocket.py) — 9 commands
 
 | Command | Type | Notes |
 |---------|------|-------|
-| `house_voice/get_events` | sync | Returns all stored events |
-| `house_voice/get_media_players` | sync | Returns all `media_player` entities from HA |
-| `house_voice/save_event` | async | `vol.In` + `vol.Length(min=1)` in schema |
-| `house_voice/delete_event` | async | Validates event exists before deleting |
-| `house_voice/test_event` | async | `bypass_spam=True`; `ServiceValidationError` surfaced to panel |
+| `house_voice/get_events` | sync | All stored events |
+| `house_voice/get_media_players` | sync | All `media_player` entities |
+| `house_voice/save_event` | async | +`condition` field |
+| `house_voice/delete_event` | async | |
+| `house_voice/test_event` | async | `bypass_spam=True`, `ServiceValidationError` surfaced |
+| `house_voice/get_groups` | sync | All speaker groups |
+| `house_voice/save_group` | async | Create/update group |
+| `house_voice/delete_group` | async | Delete group |
+| `house_voice/get_history` | sync | In-memory history (50 entries, newest first) |
 
 ---
 
@@ -72,24 +79,15 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Event list view | ✅ | Cards with ID, message, priority badge, speakers, volume |
-| Add event form | ✅ | Modal overlay with all fields |
-| Edit event | ✅ | Event ID is read-only when editing |
-| Delete event | ✅ | Confirm dialog before delete |
-| Test event | ✅ | Triggers playback immediately |
-| Refresh button | ✅ | Reloads events + players from backend |
-| Speaker selection | ✅ | Checkboxes – supports multiple speakers |
-| Volume slider | ✅ | Live % display, 5–100% in 5% steps |
-| Priority selector | ✅ | Info / Normal / Critical with emoji labels |
-| Notifications | ✅ | Success/error toast, auto-dismisses after 3.5s |
-| HA theme support | ✅ | Indeklima Designer tokens with HA CSS variable fallbacks |
-| Admin-only access | ✅ | `require_admin: true` in `panel.py` |
-| Cache-busting | ✅ | `?v=VERSION&m=mtime` on JS URL |
-| Stats bar (header) | ✅ | Events count, today count, quiet hours status |
-| Search field | ✅ | Live filter on event ID and message |
-| Import events | ✅ | Upload JSON – validates + saves all events |
-| Export events | ✅ | Download all events as `house_voice_events.json` |
-| Indeklima Designer design | ✅ | Teal `#14b8a6` / Emerald `#34d399`, DM Sans + DM Mono |
+| Events tab | ✅ | Cards with condition badge, group speaker display |
+| Groups tab | ✅ | Create/edit/delete speaker groups |
+| History tab | ✅ | Last 50 TTS events with status colours |
+| Condition field in form | ✅ | Jinja2 input with hint |
+| Group picker in event form | ✅ | Groups above individual speakers |
+| Search (events) | ✅ | |
+| Import/Export events | ✅ | |
+| Stats bar | ✅ | Events + groups count + today + quiet hours |
+| Indeklima Designer design | ✅ | Teal `#14b8a6` / Emerald `#34d399` |
 
 ---
 
@@ -97,54 +95,30 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Speakers list → string fix | ✅ | `isinstance` check + `str()` fallback |
-| Spam filter | ✅ | Same event blocked within 30 sec |
-| Spam filter bypass | ✅ | `bypass_spam=True` for test calls |
-| Quiet hours | ✅ | 22:00–07:00 – only `critical` passes through |
-| Jinja2 templates | ✅ | `Template().async_render()` with fallback |
-| Sensor increment | ✅ | Increments `sensor.house_voice_today` after TTS |
-| Empty speakers guard | ✅ | `ServiceValidationError` if speakers is empty |
-| `ultra_tts` non-blocking | ✅ | `blocking=False` – avoids stalling HA event loop |
-| `ultra_tts` error handling | ✅ | `HomeAssistantError` + Repair issue raised |
-| `_last_spoken` cleanup | ✅ | Entries older than 1 hour removed automatically |
-| HA exception types | ✅ | `ServiceValidationError` / `HomeAssistantError` with translation keys |
+| Spam filter | ✅ | 30 sec same event |
+| Spam bypass | ✅ | `bypass_spam=True` for test calls |
+| Quiet hours (configurable) | ✅ | Read from `entry.options` at call time |
+| Jinja2 templates | ✅ | Message rendering with fallback |
+| Conditional playback | ✅ | Jinja2 condition field, fail-open on error |
+| Speaker group resolution | ✅ | `group:id` prefix resolved via `HouseVoiceGroups` |
+| Async TTS queue | ✅ | `asyncio.Queue`, critical jumps queue |
+| Event history log | ✅ | In-memory deque, 50 entries |
+| `say_text` method | ✅ | Ad-hoc TTS without stored event |
+| `ultra_tts` non-blocking | ✅ | `blocking=False` |
+| Repair issue on failure | ✅ | |
+| Sensor increment | ✅ | Safely wrapped |
 | Type hints + docstrings | ✅ | Full coverage |
 
 ---
 
-## HA Compliance
+## Known Issues / Technical Debt
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `ConfigEntryNotReady` | ✅ | Raised if storage fails to load |
-| `ServiceValidationError` | ✅ | User errors (unknown event, no speakers) |
-| `HomeAssistantError` | ✅ | Communication errors (ultra_tts failure) |
-| Localized exceptions | ✅ | `translation_domain` + `translation_key` + placeholders |
-| Repairs | ✅ | `repairs.py` – UI issue if `ultra_tts` missing |
-| System Health | ✅ | `system_health.py` |
-| Diagnostics | ✅ | `diagnostics.py` |
-| Translations | ✅ | `strings.json`, `en.json`, `da.json` |
-| `quality_scale.yaml` | ✅ | Bronze ✅ Silver ✅ Gold 🔄 |
-
----
-
-## Tests
-
-| File | Tests | Coverage |
-|------|-------|---------|
-| `test_init.py` | 3 | Setup, unload, service registration |
-| `test_storage.py` | 7 | Add, get, delete, overwrite |
-| `test_voice_engine.py` | 9 | Spam, quiet hours, Jinja2, speakers, TTS |
-| `test_sensor.py` | 6 | Increment, midnight reset, attributes |
-| `test_config_flow.py` | 3 | Form, submit, duplicate abort |
-| `test_websocket.py` | 10 | All 5 WS commands + validation |
-| `test_panel.py` | 5 | Register, double-guard, unregister |
-| `test_diagnostics.py` | 4 | Fields, quiet hours, missing data |
-| `test_system_health.py` | 4 | Fields, no storage, register |
-| `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
-| **Total** | **55** | ⚠️ Tests not yet updated for bypass_spam / vol.In changes |
-
-CI: GitHub Actions runs on every push to `main`/`master`/`dev`.
+| Item | Priority | Note |
+|------|----------|------|
+| Tests need updating | Medium | New features not yet covered: groups, history, conditions, `say_text`, queue |
+| `hass.data[DOMAIN]` → `entry.runtime_data` | Low | Deferred to v3 |
+| Native `ultra_tts.py` | V3 | Replaces YAML script with Python |
+| Blueprint folder must be created manually | One-time | `blueprints/` directory doesn't auto-create |
 
 ---
 
@@ -158,42 +132,10 @@ CI: GitHub Actions runs on every push to `main`/`master`/`dev`.
 
 ---
 
-## Known Issues / Technical Debt
-
-- Tests need updating: `test_voice_engine.py` – add `bypass_spam=True` test case for `test_event`; `test_websocket.py` – `ws_save_event` now validates via voluptuous schema (some manual-validation tests may need adjustment)
-- `hass.data[DOMAIN]` bør migreres til `entry.runtime_data` (HA 2026 best practice) – deferred til v3
-
----
-
-## V3 Features – Status
-
-| Feature | Status | File |
-|---------|--------|------|
-| Speakers list fix | ✅ Done | `voice_engine.py` |
-| Spam filter (30 sec) | ✅ Done | `voice_engine.py` |
-| Spam filter bypass for test | ✅ Done | `voice_engine.py` |
-| Quiet hours (22:00–07:00) | ✅ Done | `voice_engine.py` |
-| Dynamic messages (Jinja2) | ✅ Done | `voice_engine.py` |
-| Statistics sensor | ✅ Done | `sensor.py` |
-| System health | ✅ Done | `system_health.py` |
-| Diagnostics | ✅ Done | `diagnostics.py` |
-| Stats bar in panel | ✅ Done | `house-voice-panel.js` |
-| Search + Import/Export | ✅ Done | `house-voice-panel.js` |
-| Indeklima Designer UI | ✅ Done | `house-voice-panel.js` |
-| HA exception compliance | ✅ Done | `voice_engine.py` |
-| Repairs | ✅ Done | `repairs.py` |
-| Translations (EN + DA) | ✅ Done | `strings.json`, `en.json`, `da.json` |
-| HACS support | ✅ Done | `hacs.json` |
-| GitHub Actions CI | ✅ Done | `.github/workflows/tests.yml` |
-| Morning briefing | ⬜ Not started | Weather + calendar + temperature |
-| Native `ultra_tts.py` | ⬜ Deferred to v3 | Replace YAML script with Python |
-| `entry.runtime_data` migration | ⬜ Deferred to v3 | HA 2026 best practice |
-
----
-
 ## Next Recommended Actions
 
-1. Push to GitHub → verify CI passes
-2. Opdater `test_voice_engine.py` med `bypass_spam=True` test case
-3. Opdater `test_websocket.py` for de nye voluptuous-skema regler
-4. **Morning briefing** – når klar til at bygge
+1. Create `blueprints/` folder in repo root, place `house_voice_say.yaml` inside
+2. Push to GitHub → verify CI passes
+3. HA restart → test: groups, conditions, history tab, quiet hours Options Flow
+4. Update tests for v2.2.0 (groups, history, conditions, say_text, queue)
+5. Native `ultra_tts.py` (v3)

@@ -4,96 +4,84 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [2.2.0] – 2026-05-14
+
+### Added
+- **Speaker Groups** (`groups.py`) – define named groups of media players (e.g. `alle_rum`, `stueetage`).
+  Events and `say_text` can reference groups via `group:<id>` prefix. Groups resolve to flat,
+  deduplicated speaker lists at playback time.
+- **Options Flow** (`config_flow.py`) – quiet hours start/end are now configurable via
+  Settings → Devices & Services → House Voice → Configure. Default remains 22:00–07:00.
+- **`house_voice.say_text` service** – ad-hoc TTS without a stored event. Supports Jinja2 templates,
+  group references, priority and volume. Subject to quiet hours but no spam filter.
+- **Automation Blueprint** (`blueprints/house_voice_say.yaml`) – trigger a House Voice event when
+  any entity changes state. Optional from/to state and time window restrictions.
+- **Event history log** – in-memory ring buffer (50 entries) tracking all TTS calls with timestamp,
+  event ID, message and status (`spoken`, `blocked_spam`, `blocked_quiet_hours`, `blocked_condition`).
+  Exposed via `house_voice/get_history` WebSocket command and History tab in the panel.
+- **Conditional playback** – optional `condition` field on events (Jinja2 expression). Event only
+  plays if the condition evaluates to true. Blocked events are logged in history as `blocked_condition`.
+- **Async TTS queue** – `VoiceEngine` now routes all TTS through an `asyncio.Queue` worker.
+  Ensures announcements never overlap. `critical` priority inserts at queue front.
+- **Groups tab** in sidebar panel – create, edit and delete speaker groups with speaker checkboxes.
+- **History tab** in sidebar panel – shows the last 50 TTS events with time, event ID, message
+  and colour-coded status.
+- **Condition field** in event form – Jinja2 input with hint text and condition badge on event card.
+- **Group references in event form** – groups appear above individual speakers in the checkbox list.
+- Stats bar shows group count alongside event count.
+- WebSocket API expanded from 5 to 9 commands: added `get_groups`, `save_group`, `delete_group`,
+  `get_history`.
+- `strings.json` / `en.json` / `da.json` updated with Options Flow and `say_text` translations.
+- `diagnostics.py` extended with `groups_count`, `group_ids`, `history_count`,
+  `quiet_hours_start`, `quiet_hours_end`.
+- `system_health.py` extended with `groups_count` and `queue_size`.
+- `STORAGE_GROUPS_KEY`, `CONF_QUIET_START`, `CONF_QUIET_END`, `DEFAULT_QUIET_START/END`,
+  `PRIORITIES`, `SERVICE_SAY_TEXT` added to `const.py`.
+
+### Changed
+- `voice_engine.py`: quiet hours now reads from `entry.options` at call time (live, no restart needed).
+- `voice_engine.py`: `_is_quiet_hours()` now handles same-day ranges (e.g. 01–06) in addition to
+  overnight ranges (e.g. 22–07).
+- `voice_engine.py`: `VoiceEngine.__init__` now takes `groups` and `entry` parameters.
+- `voice_engine.py`: `VoiceEngine` has `start()` / `stop()` lifecycle methods for queue worker.
+- `__init__.py`: registers `HouseVoiceGroups`, starts/stops engine queue worker, adds `say_text` service.
+- `__init__.py`: `handle_add` now persists optional `condition` field.
+- `__init__.py`: unload now awaits `engine.stop()`.
+- Panel: single-page layout replaced by 3-tab layout (Events / Groups / History).
+- Panel: speaker selector in event form shows groups section above individual speakers.
+- Panel: condition badge (⚡) shown on event cards that have a condition.
+
+---
+
 ## [2.1.0] – 2026-05-14
 
 ### Changed
-- `voice_engine.py`: `ultra_tts` called with `blocking=False` – prevents stalling HA's
-  async event loop during long-running TTS scripts (3–30+ seconds)
-- `voice_engine.py`: `say()` now accepts `bypass_spam: bool = False` parameter –
-  test calls explicitly skip the spam filter instead of implicitly sharing the same path
-- `__init__.py`: `handle_test` uses `bypass_spam=True` – test always plays regardless
-  of recent calls to the same event
-- `__init__.py`: setup/unload log messages now read `VERSION` from `const.py` instead
-  of a hardcoded string
-- `__init__.py`: all service handlers have docstrings
-- `websocket.py`: `ws_save_event` schema uses `vol.All(list, vol.Length(min=1))` for
-  speakers and `vol.In(_VALID_PRIORITIES)` for priority – validation moved into the
-  voluptuous schema instead of manual `if/return` guards
-- `websocket.py`: `ws_get_media_players` rewritten as a list comprehension
-- `websocket.py`: `ws_test_event` catches `ServiceValidationError` separately and
-  returns `"invalid_event"` error code so the panel can show a meaningful message
-- `websocket.py`: `_get_storage` / `_get_engine` have docstrings
-- `storage.py`: full type hints (`dict[str, dict]`, `str | None`) and docstrings on
-  all methods; `async_load` guards against non-dict return values
-- `house-voice-panel.js`: Indeklima Designer language applied – House Voice accent
-  teal `#14b8a6` / emerald `#34d399`, DM Sans + DM Mono typography, gradient header
-  icon, dark-theme tokens with HA CSS variable fallbacks, redesigned event cards,
-  stats pills, buttons, form overlay and panel-topbar / panel-scroll layout
+- `voice_engine.py`: `ultra_tts` called with `blocking=False`
+- `voice_engine.py`: `say()` now accepts `bypass_spam: bool = False` parameter
+- `__init__.py`: `handle_test` uses `bypass_spam=True`
+- `__init__.py`: log messages use `VERSION` from const
+- `websocket.py`: `vol.In` + `vol.Length(min=1)` in WS schema
+- `websocket.py`: `ws_test_event` catches `ServiceValidationError` separately
+- `storage.py`: full type hints and docstrings; non-dict guard in `async_load`
+- `house-voice-panel.js`: Indeklima Designer language (teal #14b8a6 / emerald #34d399)
 
 ### Fixed
-- `storage.py`: `async_load` now guards against corrupt storage returning a non-dict
-  value (e.g. after manual file edits)
-- `voice_engine.py`: speakers coerced to `str()` as fallback when not a list, instead
-  of passing the raw value to `ultra_tts`
+- `storage.py`: `async_load` guards against corrupt storage returning a non-dict value
+- `voice_engine.py`: speakers coerced via `str()` fallback when not a list
 
 ---
 
 ## [2.0.0] – 2026-03-11
 
 ### Added
-- Full UI sidebar panel (`house-voice-panel.js`) with add, edit, delete, test and refresh
-- WebSocket API with 5 commands: `get_events`, `get_media_players`, `save_event`, `delete_event`, `test_event`
-- Config Flow setup – integration configured entirely via HA UI (no YAML)
-- Speaker selection via checkboxes – supports multiple speakers per event
-- Volume slider with live % display (5–100% in 5% steps)
-- Priority selector: Info / Normal / Critical
-- HA theme support via CSS variables
-- Admin-only panel access (`require_admin: true`)
-- Cache-busting on JS URL (`?v=VERSION&m=mtime`)
-- Spam filter – same event blocked within 30 seconds
-- Quiet hours enforcement – 22:00–07:00, only `critical` priority passes through
-- Jinja2 template rendering in event messages with fallback to raw message on error
-- Statistics sensor `sensor.house_voice_today` – daily TTS counter, resets at midnight
-- System Health integration – visible under Settings → System → System Health
-- Diagnostics support – downloadable JSON from Settings → Devices & Services
-- Stats bar in panel header showing events count, today count and quiet hours status
-- Search field in panel – live filter on event ID and message
-- Import/Export events as JSON
-- `vol.Schema` validation on all 4 HA services
-- Speakers stored as list are automatically converted to string before `ultra_tts` call
-- `ConfigEntryNotReady` raised if storage fails to load on setup
-- `ServiceValidationError` for user errors (unknown event ID, no speakers configured)
-- `HomeAssistantError` for communication errors (ultra_tts failure)
-- Localized exceptions with `translation_domain`, `translation_key` and placeholders
-- `repairs.py` – HA Repair issue created in UI if `script.ultra_tts` is missing
-- `strings.json` – master translation strings for config flow, services, exceptions and repairs
-- `translations/en.json` – full English translations
-- `translations/da.json` – full Danish translations
-- `quality_scale.yaml` – tracks Bronze ✅ Silver ✅ Gold 🔄
-- `hacs.json` – HACS support
-- `.github/workflows/tests.yml` – GitHub Actions CI (runs on push/PR)
-- `requirements-test.txt` – test dependencies
-- 55 automated tests across 10 test files
-
-### Changed
-- `voice_engine.py` now handles all TTS logic centrally (spam, quiet hours, templates, sensor, error handling)
-- `__init__.py` loads sensor platform via `async_forward_entry_setups`
-- `system_health.py` – `async_register` is now correctly synchronous (fixes RuntimeWarning)
-- `manifest.json` – added `quality_scale: silver`
-- All service handlers re-raise exceptions after logging for proper HA error propagation
-
-### Fixed
-- `ultra_tts` receiving a `list` instead of `string` for `speaker` field (caused `unhashable type: 'list'` error)
-- `_last_spoken` dict growing unboundedly – entries older than 1 hour are now cleaned up
-- Sensor `increment()` wrapped in try/except to prevent TTS failure on sensor crash
+- Full UI sidebar panel, WebSocket API (5 commands), Config Flow
+- Spam filter, quiet hours, Jinja2 templates, statistics sensor
+- System Health, Diagnostics, Repairs, Translations (EN + DA)
+- HACS support, GitHub Actions CI, 55 automated tests
 
 ---
 
 ## [1.0.0] – 2026-01-01
 
 ### Added
-- Initial release
-- Core TTS service `house_voice.say` routing through `script.ultra_tts`
-- `add_event`, `delete_event`, `test_event` services
-- HA Storage API wrapper (`storage.py`)
-- Event data structure: `message`, `speakers`, `priority`, `volume`
+- Initial release – core TTS service routing through `script.ultra_tts`
