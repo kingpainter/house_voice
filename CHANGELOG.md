@@ -4,6 +4,20 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [3.0.2] – 2026-05-23
+
+### Fixed
+- **Panel reload crash** (`panel.py`): After a reload, `async_register_static_paths`
+  threw `RuntimeError: Added route will never be executed, method GET is already registered`
+  because aiohttp's HTTP router is permanent across reloads. Fixed by tracking static path
+  registration with a session-level key (`house_voice_static_path_registered`) that is
+  never cleared on unload. The static path is now only registered once per HA session;
+  the sidebar panel entry is still re-registered normally after each reload.
+- Added 2 new tests in `test_panel.py`: reload safety (static path called once) and
+  session key survives unload. Total: 129 tests.
+
+---
+
 ## [3.0.1] – 2026-05-23
 
 ### Fixed

@@ -294,6 +294,31 @@ async def test_clear_heos_queue_ignores_empty_queue_error(mock_hass):
 
 
 @pytest.mark.asyncio
+async def test_async_speak_clears_heos_queue_before_and_after_tts():
+    """async_speak calls clear_playlist both before and after TTS for HEOS speakers."""
+    hass = _make_hass(volume=0.5)
+    clear_calls = []
+
+    async def mock_call(domain, service, data=None, **kwargs):
+        if service == "clear_playlist":
+            clear_calls.append(service)
+
+    hass.services.async_call = mock_call
+
+    tts = UltraTTS(hass)
+    with patch.object(tts, "_is_heos_speaker", return_value=True), \
+         patch("asyncio.sleep", new=AsyncMock()):
+        await tts.async_speak(
+            speaker="media_player.kokken_2",
+            message="Maden er klar",
+            volume=0.5,
+        )
+
+    # Must be called twice: once before (pre-clear) and once after (post-clear)
+    assert len(clear_calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_async_speak_clears_heos_queue_after_tts():
     """async_speak calls clear_playlist after TTS for HEOS speakers."""
     hass = _make_hass(volume=0.5)

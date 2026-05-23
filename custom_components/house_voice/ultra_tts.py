@@ -85,6 +85,12 @@ class UltraTTS:
         # Brief pause so duck takes effect before speech starts
         await asyncio.sleep(_DUCK_SETTLE_DELAY)
 
+        # HEOS pre-clear: remove any stale TTS files from previous calls
+        # before speaking, so old messages don't replay first.
+        for sp in speakers:
+            if self._is_heos_speaker(sp):
+                await self._clear_heos_queue(sp)
+
         # Speak via HA Cloud TTS
         try:
             await self.hass.services.async_call(
@@ -115,10 +121,8 @@ class UltraTTS:
             await self._set_volumes(speakers, original_volumes)
             _LOGGER.debug("UltraTTS: volume restored for %s", speakers)
 
-            # HEOS-specific: clear the TTS file from the internal queue.
-            # HEOS accumulates TTS files in its queue and replays them on next TTS call.
-            # clear_playlist returns eid=4 when the queue is already empty – this is
-            # normal and must be silently ignored (not treated as an error).
+            # HEOS post-clear: remove the TTS file we just added so it
+            # doesn't replay on the next TTS call.
             for sp in speakers:
                 if self._is_heos_speaker(sp):
                     await self._clear_heos_queue(sp)

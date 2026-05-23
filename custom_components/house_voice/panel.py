@@ -1,7 +1,9 @@
-# VERSION = "2.0.0"
+# VERSION = "3.0.1"
 # File: panel.py
 # Description: Registers the House Voice Manager sidebar panel as a static
 #              HTTP path and custom web component in Home Assistant.
+#              The static HTTP path survives reloads (aiohttp router is permanent),
+#              so it is tracked at session level and only registered once per HA session.
 
 from __future__ import annotations
 
@@ -25,6 +27,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Key used to track static path registration at the HA session level.
+# Unlike hass.data[DOMAIN], this key is NOT cleared on unload/reload so
+# aiohttp's router is never asked to register the same URL twice.
+_SESSION_KEY_STATIC = f"{DOMAIN}_static_path_registered"
+
 # StaticPathConfig was introduced in HA 2024.2 – fall back to legacy API if not available
 try:
     from homeassistant.components.http import StaticPathConfig
@@ -35,11 +42,6 @@ except ImportError:
 
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Register the House Voice sidebar panel."""
-
-    # Guard against double registration within the same HA session
-    if hass.data[DOMAIN].get("_panel_registered", False):
-        _LOGGER.debug("House Voice panel already registered, skipping")
-        return
 
     root_dir     = os.path.join(hass.config.path(CUSTOM_COMPONENTS), DOMAIN)
     frontend_dir = os.path.join(root_dir, PANEL_FOLDER)
@@ -52,16 +54,25 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         _LOGGER.warning("House Voice panel JS not found: %s", panel_file)
         cache_bust = 0
 
-    # Register static HTTP path so HA can serve the JS file
-    if _HAS_STATIC_PATH_CONFIG:
-        await hass.http.async_register_static_paths([
-            StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
-        ])
+    # Register static HTTP path – once per HA session only.
+    # aiohttp's router is permanent: re-registering the same URL after a reload
+    # raises RuntimeError. We guard with a session-level key that survives unload.
+    if not hass.data.get(_SESSION_KEY_STATIC, False):
+        if _HAS_STATIC_PATH_CONFIG:
+            await hass.http.async_register_static_paths([
+                StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
+            ])
+        else:
+            hass.http.register_static_path(PANEL_URL, panel_file, cache_headers=False)
+        hass.data[_SESSION_KEY_STATIC] = True
+        _LOGGER.info("House Voice panel static path registered: %s → %s", PANEL_URL, panel_file)
     else:
-        # Legacy API (HA < 2024.2)
-        hass.http.register_static_path(PANEL_URL, panel_file, cache_headers=False)
+        _LOGGER.debug("House Voice panel static path already registered, skipping")
 
-    _LOGGER.info("House Voice panel static path registered: %s → %s", PANEL_URL, panel_file)
+    # Guard against double panel registration within the same HA session
+    if hass.data[DOMAIN].get("_panel_registered", False):
+        _LOGGER.debug("House Voice panel already registered, skipping")
+        return
 
     # Register the custom sidebar panel
     await panel_custom.async_register_panel(
@@ -88,6 +99,7 @@ def async_unregister_panel(hass: HomeAssistant) -> None:
     else:
         _LOGGER.debug("House Voice panel was not registered, skipping removal")
 
-    # Always clear the flag so the next setup registers fresh
+    # Clear the panel flag so the next setup re-registers the sidebar entry.
+    # Do NOT clear _SESSION_KEY_STATIC – the HTTP route must not be re-added.
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["_panel_registered"] = False

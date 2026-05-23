@@ -1,8 +1,8 @@
 # House Voice – Project Status
 
-**Version:** 3.0.1
+**Version:** 3.0.2
 **Date:** 2026-05-23
-**Status:** Active development – v3.0.1 complete
+**Status:** Active development – v3.0.2 complete
 
 ---
 
@@ -17,6 +17,7 @@
 | v2.2.1 – Test coverage + queue supervision | ✅ Complete |
 | v3.0 – Native ultra_tts.py | ✅ Complete |
 | v3.0.1 – HEOS queue fix | ✅ Complete |
+| v3.0.2 – Panel reload crash fix | ✅ Complete |
 | Gold tier compliance | 🔄 `test_full_coverage` remaining |
 
 ---
@@ -30,10 +31,10 @@
 | `const.py` | 2.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
 | `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
 | `voice_engine.py` | 3.0.0 | `_execute_tts` kalder nu `UltraTTS` i stedet for `script.ultra_tts` |
-| `ultra_tts.py` | 3.0.1 | +`_is_heos_speaker()`, `_clear_heos_queue()`, HEOS post-TTS queue cleanup |
-| `groups.py` | 2.2.0 | NEW – speaker group storage + `resolve_speakers()` |
+| `panel.py` | 3.0.2 | Session-level static path guard – reload crash fix |
+| `ultra_tts.py` | 3.0.1 | Native duck/speak/restore + HEOS queue cleanup |
+| `groups.py` | 2.2.0 | Speaker group storage + `resolve_speakers()` |
 | `storage.py` | 2.1.0 | Unchanged |
-| `panel.py` | 2.0.0 | Unchanged |
 | `websocket.py` | 2.2.0 | 9 commands: +`get_groups`, `save_group`, `delete_group`, `get_history` |
 | `sensor.py` | 2.0.0 | Unchanged |
 | `system_health.py` | 2.2.0 | +`groups_count`, `queue_size` |
@@ -127,12 +128,12 @@
 | `test_sensor.py` | 6 | Increment, midnight reset, attributter |
 | `test_config_flow.py` | 3 | Form, submit, duplicate abort |
 | `test_websocket.py` | 24 | Alle 9 WS commands + validering |
-| `test_panel.py` | 5 | Register, double-guard, unregister |
+| `test_panel.py` | 7 | Register, reload safety, session key, unregister |
 | `test_diagnostics.py` | 4 | Fields, quiet hours, missing data |
 | `test_system_health.py` | 4 | Fields, no storage, register |
 | `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
-| `test_ultra_tts.py` | 22 | +HEOS detection, queue clear, empty-queue error, non-HEOS guard |
-| **Total** | **125** | |
+| `test_ultra_tts.py` | 22 | duck/speak/restore, HEOS detection, queue clear, empty-queue guard |
+| **Total** | **129** | |
 
 CI: GitHub Actions kører ved hvert push til `main`/`master`/`dev`.
 
