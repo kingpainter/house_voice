@@ -71,19 +71,30 @@ class UltraTTS:
             _LOGGER.warning("UltraTTS: no valid speakers in '%s', skipping", speaker)
             return
 
-        # Read current volumes before ducking so we can restore them
+        # Read current volumes before we change anything – needed for restore
         original_volumes = await self._get_volumes(speakers)
 
         duck_factor = _DUCK_FACTOR.get(priority, _DUCK_FACTOR["normal"])
 
-        # Duck all speakers simultaneously
-        await self._set_volumes(
-            speakers,
-            {sp: original_volumes[sp] * duck_factor for sp in speakers},
-        )
+        # Determine TTS playback volume per speaker:
+        #   - Music playing (original > 0.05): duck the music, speak at volume
+        #   - Idle (original <= 0.05): just set to the configured volume directly
+        # In both cases the speaker ends up at the right loudness for TTS.
+        # After TTS we always restore to original_volume.
+        tts_volumes = {
+            sp: (
+                volume * duck_factor   # lower the music, TTS rides on top at volume
+                if original_volumes[sp] > 0.05
+                else volume            # idle: straight to configured volume
+            )
+            for sp in speakers
+        }
 
         # Brief pause so duck takes effect before speech starts
         await asyncio.sleep(_DUCK_SETTLE_DELAY)
+
+        await self._set_volumes(speakers, tts_volumes)
+        _LOGGER.debug("UltraTTS: volume set for TTS: %s", tts_volumes)
 
         # HEOS pre-clear: remove any stale TTS files from previous calls
         # before speaking, so old messages don't replay first.
@@ -117,9 +128,9 @@ class UltraTTS:
             )
             await asyncio.sleep(delay)
 
-            # Restore all speakers to original volume
+            # Restore all speakers to their pre-TTS volume
             await self._set_volumes(speakers, original_volumes)
-            _LOGGER.debug("UltraTTS: volume restored for %s", speakers)
+            _LOGGER.debug("UltraTTS: volume restored to original: %s", original_volumes)
 
             # HEOS post-clear: remove the TTS file we just added so it
             # doesn't replay on the next TTS call.
