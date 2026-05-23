@@ -26,6 +26,9 @@ _DUCK_SETTLE_DELAY = 1.0
 # Minimum post-speech delay in seconds (allows TTS audio to finish)
 _MIN_SPEECH_DELAY = 3.0
 
+# Extra delay added for HEOS speakers to account for buffering + network startup latency
+_HEOS_EXTRA_DELAY = 4.0
+
 # Characters per second – used to estimate speech duration
 _CHARS_PER_SECOND = 12.0
 
@@ -96,11 +99,11 @@ class UltraTTS:
         await self._set_volumes(speakers, tts_volumes)
         _LOGGER.debug("UltraTTS: volume set for TTS: %s", tts_volumes)
 
-        # HEOS pre-clear: remove any stale TTS files from previous calls
-        # before speaking, so old messages don't replay first.
-        for sp in speakers:
-            if self._is_heos_speaker(sp):
-                await self._clear_heos_queue(sp)
+        # HEOS pre-clear: remove stale TTS files before speaking
+        # so old messages don’t replay first.
+        heos_speakers = [sp for sp in speakers if self._is_heos_speaker(sp)]
+        for sp in heos_speakers:
+            await self._clear_heos_queue(sp)
 
         # Speak via HA Cloud TTS
         try:
@@ -117,14 +120,16 @@ class UltraTTS:
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("UltraTTS: tts.speak failed for '%s': %s", speaker, err)
-            # Still attempt volume restore even if speak failed
         finally:
-            # Dynamic delay: give the TTS audio time to finish
+            # Base delay: estimated speech duration
             delay = self._dynamic_delay(message)
+            # HEOS needs extra time for network buffering + startup latency.
+            # Without this, volume restore fires before playback actually finishes.
+            if heos_speakers:
+                delay += _HEOS_EXTRA_DELAY
             _LOGGER.debug(
-                "UltraTTS: waiting %.1f s for speech to complete (message len=%d)",
-                delay,
-                len(message),
+                "UltraTTS: waiting %.1f s (message len=%d, heos=%s)",
+                delay, len(message), bool(heos_speakers),
             )
             await asyncio.sleep(delay)
 
@@ -132,11 +137,9 @@ class UltraTTS:
             await self._set_volumes(speakers, original_volumes)
             _LOGGER.debug("UltraTTS: volume restored to original: %s", original_volumes)
 
-            # HEOS post-clear: remove the TTS file we just added so it
-            # doesn't replay on the next TTS call.
-            for sp in speakers:
-                if self._is_heos_speaker(sp):
-                    await self._clear_heos_queue(sp)
+            # NOTE: No post-speak clear_playlist here.
+            # Clearing the queue while HEOS is still playing stops playback immediately.
+            # The pre-speak clear above is sufficient to prevent queue accumulation.
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 

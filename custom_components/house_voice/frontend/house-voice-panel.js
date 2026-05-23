@@ -81,6 +81,31 @@ class HouseVoicePanel extends HTMLElement {
     this._notifTimer = setTimeout(() => { this._notification = null; this._render(); }, 3500);
   }
 
+  async _reload() {
+    if (!confirm("Genindlæs House Voice Manager?")) return;
+    try {
+      // Find our own config entry ID via the entity registry
+      const entityId = "sensor.house_voice_today";
+      const stateObj = this._hass.states[entityId];
+      const entryId  = stateObj?.attributes?.entry_id ||
+                       Object.values(this._hass.entities || {})
+                         .find(e => e.entity_id === entityId)?.config_entry_id;
+
+      if (entryId) {
+        await this._hass.callService("homeassistant", "reload_config_entry", {
+          entry_id: entryId,
+        });
+      } else {
+        // Fallback: reload all integrations (works without entry_id)
+        await this._hass.callService("homeassistant", "reload_custom_templates", {});
+      }
+      this._notify("♻️ House Voice genindlæst");
+      setTimeout(() => this._load(), 1500);
+    } catch (e) {
+      this._notify(`Fejl ved genindlæsning: ${e.message || e}`, "error");
+    }
+  }
+
   // ── Event actions ──────────────────────────────────────────────────────────
 
   _openAdd()    { this._editingId = null; this._showForm = true; this._render(); }
@@ -568,12 +593,15 @@ class HouseVoicePanel extends HTMLElement {
                 <button class="btn btn-import" id="btn-import">📥 Import</button>
                 <button class="btn btn-export" id="btn-export">📤 Export</button>
                 <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
                 <button class="btn btn-add" id="btn-add">＋ Tilføj event</button>
               ` : isGroups ? `
                 <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
                 <button class="btn btn-add" id="btn-add-group">＋ Tilføj gruppe</button>
               ` : `
                 <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
               `}
             </div>
           </div>
@@ -623,6 +651,7 @@ class HouseVoicePanel extends HTMLElement {
     root.getElementById("btn-add")?.addEventListener("click",       () => this._openAdd());
     root.getElementById("btn-add-group")?.addEventListener("click", () => this._openAddGroup());
     root.getElementById("btn-refresh")?.addEventListener("click",   () => this._load());
+    root.getElementById("btn-reload")?.addEventListener("click",    () => this._reload());
     root.getElementById("btn-export")?.addEventListener("click",    () => this._exportEvents());
     root.getElementById("btn-import")?.addEventListener("click",    () => this._importEvents());
 
@@ -794,6 +823,7 @@ class HouseVoicePanel extends HTMLElement {
     .btn-cancel  { background: transparent; color: var(--sub); border: 1px solid var(--div); }
     .btn-export  { background: rgba(20,184,166,0.08); color: var(--accent); border: 1px solid rgba(20,184,166,0.2); }
     .btn-import  { background: rgba(52,211,153,0.08); color: var(--accent2); border: 1px solid rgba(52,211,153,0.2); }
+    .btn-reload  { background: rgba(99,102,241,0.10); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
 
     /* ── Form overlay ── */
     .form-overlay {
