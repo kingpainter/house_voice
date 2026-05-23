@@ -1,8 +1,8 @@
 # House Voice – Project Status
 
-**Version:** 2.2.1
+**Version:** 3.0.0
 **Date:** 2026-05-23
-**Status:** Active development – v2.2.1 complete, Gold tier in progress
+**Status:** Active development – v3.0.0 complete
 
 ---
 
@@ -15,7 +15,8 @@
 | v2.1 – Stability + code quality | ✅ Complete |
 | v2.2 – Speaker groups, queue, conditions, history | ✅ Complete |
 | v2.2.1 – Test coverage + queue supervision | ✅ Complete |
-| Gold tier compliance | 🔄 In progress (`test_full_coverage` remaining) |
+| v3.0 – Native ultra_tts.py | ✅ Complete |
+| Gold tier compliance | 🔄 `test_full_coverage` remaining |
 
 ---
 
@@ -27,7 +28,8 @@
 | `manifest.json` | 2.2.0 | Bumped |
 | `const.py` | 2.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
 | `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
-| `voice_engine.py` | 2.2.1 | +queue worker supervision, `_restart_worker_if_dead()`, `CancelledError` handling |
+| `voice_engine.py` | 3.0.0 | `_execute_tts` kalder nu `UltraTTS` i stedet for `script.ultra_tts` |
+| `ultra_tts.py` | 3.0.0 | NY – native duck/speak/restore Python executor |
 | `groups.py` | 2.2.0 | NEW – speaker group storage + `resolve_speakers()` |
 | `storage.py` | 2.1.0 | Unchanged |
 | `panel.py` | 2.0.0 | Unchanged |
@@ -128,7 +130,8 @@
 | `test_diagnostics.py` | 4 | Fields, quiet hours, missing data |
 | `test_system_health.py` | 4 | Fields, no storage, register |
 | `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
-| **Total** | **103** | |
+| `test_ultra_tts.py` | 17 | `_dynamic_delay`, `_get_volumes`, `_set_volumes`, `async_speak` full flow |
+| **Total** | **120** | |
 
 CI: GitHub Actions kører ved hvert push til `main`/`master`/`dev`.
 
@@ -153,6 +156,6 @@ Ingen. 🟢
 ## Next Recommended Actions
 
 1. Push til GitHub → verificer CI er grøn
-2. HA genstart → test: groups, conditions, history tab, quiet hours Options Flow
-3. Native `ultra_tts.py` (v3)
-4. `hass.data[DOMAIN]` → `entry.runtime_data` migration (v3)
+2. HA genstart → test TTS end-to-end på en rigtig speaker (tjek duck/restore i loggen)
+3. `hass.data[DOMAIN]` → `entry.runtime_data` migration
+4. `TTS_ENTITY` i `ultra_tts.py` gøres konfigurerbar via Options Flow

@@ -1,5 +1,4 @@
-# VERSION = "2.2.0"
-# File: __init__.py
+# VERSION = "3.0.0"
 # Description: House Voice Manager setup via config entry (UI-based, no YAML).
 #              Registers services, WebSocket API, sidebar panel and sensor.
 

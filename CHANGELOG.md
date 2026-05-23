@@ -4,6 +4,34 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [3.0.0] – 2026-05-23
+
+### Added
+- **`ultra_tts.py`** – native Python TTS executor replaces the YAML `script.ultra_tts`.
+  Implements the full duck → speak → wait → restore cycle directly in Python:
+  - Reads current `volume_level` from each speaker's state before ducking
+  - Duck factors: `critical` → mute (0.0), `normal` → 25%, `info` → 40% of original
+  - 1-second settle delay after duck before speaking
+  - Calls `tts.speak` via `tts.home_assistant_cloud`
+  - Dynamic post-speech delay: `ceil(len(message) / 12)`, minimum 3 seconds
+  - Volume restore runs in `finally` block – guaranteed even if `tts.speak` fails
+  - Comma-separated multi-speaker strings are split and handled in parallel
+  - Graceful fallback on `volume_set` failure (logged, speech continues)
+- `test_ultra_tts.py` – 17 tests covering `_dynamic_delay`, `_get_volumes`,
+  `_set_volumes`, `async_speak` full flow (duck/speak/restore), critical mute,
+  TTS failure restore, empty speaker guard, multi-speaker comma split.
+
+### Changed
+- `voice_engine._execute_tts` now calls `UltraTTS.async_speak` instead of
+  `script.ultra_tts`. Error handling and Repair issue creation unchanged.
+- `const.py`, `manifest.json`, `voice_engine.py`, `__init__.py` → version 3.0.0.
+
+### Removed
+- `script.ultra_tts` is no longer called by House Voice. The YAML file
+  (`ultra_tts.yaml`) can be kept as standalone fallback but is not required.
+
+---
+
 ## [2.2.1] – 2026-05-23
 
 ### Added

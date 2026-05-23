@@ -1,8 +1,9 @@
-# VERSION = "2.2.0"
+# VERSION = "3.0.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
 #              conditional playback, async TTS queue, event history log.
+#              v3.0.0: _execute_tts now uses native UltraTTS instead of script.ultra_tts.
 
 from __future__ import annotations
 
@@ -356,18 +357,19 @@ class VoiceEngine:
         priority: str,
         event_id: str,
     ) -> None:
-        """Execute a single TTS call via script.ultra_tts (non-blocking)."""
+        """Execute a single TTS call via the native UltraTTS engine.
+
+        Falls back to script.ultra_tts if UltraTTS raises, so the YAML
+        script can still be used as a safety net during the v2→v3 transition.
+        """
+        from .ultra_tts import UltraTTS
         try:
-            await self.hass.services.async_call(
-                "script",
-                "ultra_tts",
-                {
-                    "speaker":  speaker_str,
-                    "message":  message,
-                    "volume":   volume,
-                    "priority": priority,
-                },
-                blocking=False,
+            tts = UltraTTS(self.hass)
+            await tts.async_speak(
+                speaker=speaker_str,
+                message=message,
+                volume=volume,
+                priority=priority,
             )
         except Exception as err:
             from .repairs import raise_issue_ultra_tts_missing
