@@ -121,17 +121,13 @@ class UltraTTS:
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("UltraTTS: tts.speak failed for '%s': %s", speaker, err)
         finally:
-            # Base delay: estimated speech duration
-            delay = self._dynamic_delay(message)
-            # HEOS needs extra time for network buffering + startup latency.
-            # Without this, volume restore fires before playback actually finishes.
-            if heos_speakers:
-                delay += _HEOS_EXTRA_DELAY
-            _LOGGER.debug(
-                "UltraTTS: waiting %.1f s (message len=%d, heos=%s)",
-                delay, len(message), bool(heos_speakers),
-            )
-            await asyncio.sleep(delay)
+            # Wait for playback to finish on each speaker.
+            # Uses state-based waiting (idle/paused after playing) so we never
+            # restore volume while audio is still playing.
+            # Falls back to estimated delay if state never reaches 'playing'.
+            estimated = self._dynamic_delay(message) + _HEOS_EXTRA_DELAY
+            for sp in speakers:
+                await self._wait_for_idle(sp, estimated)
 
             # Restore all speakers to their pre-TTS volume
             await self._set_volumes(speakers, original_volumes)
