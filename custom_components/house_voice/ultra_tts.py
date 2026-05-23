@@ -63,6 +63,11 @@ class UltraTTS:
             _LOGGER.warning("UltraTTS: no valid speakers in '%s', skipping", speaker)
             return
 
+        _LOGGER.warning(
+            "UltraTTS v3.1.0 RUNNING: speaker='%s' message='%s' volume=%s priority=%s",
+            speaker, message, volume, priority,
+        )
+
         # Read original volumes for restore
         original_volumes = await self._get_volumes(speakers)
 
