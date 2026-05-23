@@ -1,5 +1,4 @@
-# VERSION = "3.0.0"
-# Description: House Voice Manager setup via config entry (UI-based, no YAML).
+# VERSION = "3.1.1"
 #              Registers services, WebSocket API, sidebar panel and sensor.
 
 from __future__ import annotations

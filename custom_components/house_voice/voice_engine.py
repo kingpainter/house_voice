@@ -1,4 +1,4 @@
-# VERSION = "3.0.0"
+# VERSION = "3.1.1"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,

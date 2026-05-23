@@ -4,6 +4,25 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [3.1.1] – 2026-05-23
+
+### Fixed
+- **Volume falder under TTS** (`ultra_tts.py`): Duck-logikken brugte `original_volume`
+  som base i stedet for den konfigurerede `volume`. Idle MA-speaker rapporterer
+  `volume_level: 0.11–0.16` — over den gamle `0.05`-grænse — så TTS spillede ved
+  `0.45 * 0.25 = 0.11` i stedet for `0.45`. Duck aktiveres nu kun hvis
+  `state == 'playing'` OG `volume > 0.25`. Ellers sættes TTS direkte til konfigureret volumen.
+- **HEOS kø ryddes på forkert entity**: `clear_playlist` blev kaldt på
+  `media_player.kokken_2` (Music Assistant), men den interne kø sidder på
+  `media_player.kokken` (HEOS direkte). Ny `_find_heos_sibling()` finder HEOS-entityen
+  via to strategier: (1) samme `device_id`, (2) matching `unique_id` — MA bruger
+  HEOS player_id som `unique_id`. Virker automatisk uden manuel konfiguration.
+- **Platform-detection** bruger nu `state.attributes["app_id"] == "music_assistant"`
+  som pålidelig første check, med entity registry som fallback.
+- Debug-WARNING linjer fjernet fra `ultra_tts.py` og `voice_engine.py`.
+
+---
+
 ## [3.0.2] – 2026-05-23
 
 ### Fixed

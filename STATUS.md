@@ -1,8 +1,8 @@
 # House Voice – Project Status
 
-**Version:** 3.0.2
+**Version:** 3.1.1
 **Date:** 2026-05-23
-**Status:** Active development – v3.0.2 complete
+**Status:** Stabil
 
 ---
 
@@ -18,6 +18,7 @@
 | v3.0 – Native ultra_tts.py | ✅ Complete |
 | v3.0.1 – HEOS queue fix | ✅ Complete |
 | v3.0.2 – Panel reload crash fix | ✅ Complete |
+| v3.1.1 – Volume + HEOS kø fix | ✅ Complete |
 | Gold tier compliance | 🔄 `test_full_coverage` remaining |
 
 ---
@@ -26,57 +27,57 @@
 
 | File | Version | Notes |
 |------|---------|-------|
-| `__init__.py` | 2.2.0 | +`say_text` service, groups init, engine lifecycle, `say_text` handler |
-| `manifest.json` | 2.2.0 | Bumped |
-| `const.py` | 2.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
+| `__init__.py` | 3.0.0 | +`say_text` service, groups init, engine lifecycle |
+| `manifest.json` | 3.0.0 | version bumped |
+| `const.py` | 3.0.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
 | `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
-| `voice_engine.py` | 3.0.0 | `_execute_tts` kalder nu `UltraTTS` i stedet for `script.ultra_tts` |
-| `panel.py` | 3.0.2 | Session-level static path guard – reload crash fix |
-| `ultra_tts.py` | 3.0.1 | Native duck/speak/restore + HEOS queue cleanup |
+| `voice_engine.py` | 3.0.0 | `_execute_tts` → `UltraTTS`, queue worker supervision |
+| `ultra_tts.py` | 3.1.1 | Native duck/speak/restore, HEOS sibling detection, MA app_id check |
+| `panel.py` | 3.0.2 | Session-level static path guard — reload crash fix |
 | `groups.py` | 2.2.0 | Speaker group storage + `resolve_speakers()` |
 | `storage.py` | 2.1.0 | Unchanged |
-| `websocket.py` | 2.2.0 | 9 commands: +`get_groups`, `save_group`, `delete_group`, `get_history` |
+| `websocket.py` | 2.2.0 | 9 commands |
 | `sensor.py` | 2.0.0 | Unchanged |
 | `system_health.py` | 2.2.0 | +`groups_count`, `queue_size` |
 | `diagnostics.py` | 2.2.0 | +`groups_count`, `group_ids`, `history_count`, quiet hours config |
 | `repairs.py` | 2.0.0 | Unchanged |
-| `strings.json` | 2.2.0 | +Options Flow, `say_text` service, `condition` field |
+| `strings.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
 | `quality_scale.yaml` | 2.0.0 | Unchanged |
-| `house-voice-panel.js` | 2.2.0 | 3-tab layout: Events / Groups / History; condition badge; group picker |
-| `translations/en.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
-| `translations/da.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
+| `house-voice-panel.js` | 2.2.0 | 3-tab layout + Reload-knap |
+| `translations/en.json` | 2.2.0 | Unchanged |
+| `translations/da.json` | 2.2.0 | Unchanged |
 | `hacs.json` | 2.0.0 | Unchanged |
 | `.github/workflows/tests.yml` | 2.0.0 | Unchanged |
 | `requirements-test.txt` | 2.0.0 | Unchanged |
-| `blueprints/house_voice_say.yaml` | 2.2.0 | NEW – automation blueprint |
+| `blueprints/house_voice_say.yaml` | 2.2.0 | Automation blueprint |
 
 ---
 
 ## Services
 
-| Service | Registered | Schema validated | Notes |
-|---------|------------|-----------------|-------|
-| `house_voice.say` | ✅ | ✅ | Speaks stored event |
-| `house_voice.say_text` | ✅ | ✅ | Ad-hoc text, group refs, Jinja2 |
-| `house_voice.add_event` | ✅ | ✅ | +`condition` field |
+| Service | Registreret | Valideret | Notes |
+|---------|-------------|-----------|-------|
+| `house_voice.say` | ✅ | ✅ | Afspiller gemt event |
+| `house_voice.say_text` | ✅ | ✅ | Ad-hoc tekst, gruppe-refs, Jinja2 |
+| `house_voice.add_event` | ✅ | ✅ | +`condition` felt |
 | `house_voice.delete_event` | ✅ | ✅ | |
 | `house_voice.test_event` | ✅ | ✅ | `bypass_spam=True` |
 
 ---
 
-## WebSocket API (websocket.py) — 9 commands
+## WebSocket API — 9 commands
 
 | Command | Type | Notes |
 |---------|------|-------|
-| `house_voice/get_events` | sync | All stored events |
-| `house_voice/get_media_players` | sync | All `media_player` entities |
-| `house_voice/save_event` | async | +`condition` field |
+| `house_voice/get_events` | sync | Alle gemte events |
+| `house_voice/get_media_players` | sync | Alle `media_player` entities |
+| `house_voice/save_event` | async | +`condition` felt |
 | `house_voice/delete_event` | async | |
-| `house_voice/test_event` | async | `bypass_spam=True`, `ServiceValidationError` surfaced |
-| `house_voice/get_groups` | sync | All speaker groups |
-| `house_voice/save_group` | async | Create/update group |
-| `house_voice/delete_group` | async | Delete group |
-| `house_voice/get_history` | sync | In-memory history (50 entries, newest first) |
+| `house_voice/test_event` | async | `bypass_spam=True` |
+| `house_voice/get_groups` | sync | Alle højttalergrupper |
+| `house_voice/save_group` | async | Opret/opdater gruppe |
+| `house_voice/delete_group` | async | Slet gruppe |
+| `house_voice/get_history` | sync | In-memory historik (50 entries, nyeste først) |
 
 ---
 
@@ -84,14 +85,15 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Events tab | ✅ | Cards with condition badge, group speaker display |
-| Groups tab | ✅ | Create/edit/delete speaker groups |
-| History tab | ✅ | Last 50 TTS events with status colours |
-| Condition field in form | ✅ | Jinja2 input with hint |
-| Group picker in event form | ✅ | Groups above individual speakers |
-| Search (events) | ✅ | |
+| Events tab | ✅ | Cards med condition badge, gruppe-speaker visning |
+| Groups tab | ✅ | Opret/rediger/slet højttalergrupper |
+| History tab | ✅ | Sidste 50 TTS-kald med farvekoded status |
+| Condition felt i formular | ✅ | Jinja2 input med hint |
+| Gruppe-picker i event-formular | ✅ | Grupper over individuelle højttalere |
+| Søgning (events) | ✅ | |
 | Import/Export events | ✅ | |
-| Stats bar | ✅ | Events + groups count + today + quiet hours |
+| Stats bar | ✅ | Events + grupper + today + quiet hours |
+| Reload-knap | ✅ | Genindlæser integration fra panelet |
 | Indeklima Designer design | ✅ | Teal `#14b8a6` / Emerald `#34d399` |
 
 ---
@@ -100,19 +102,34 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Spam filter | ✅ | 30 sec same event |
-| Spam bypass | ✅ | `bypass_spam=True` for test calls |
-| Quiet hours (configurable) | ✅ | Read from `entry.options` at call time |
-| Jinja2 templates | ✅ | Message rendering with fallback |
-| Conditional playback | ✅ | Jinja2 condition field, fail-open on error |
-| Speaker group resolution | ✅ | `group:id` prefix resolved via `HouseVoiceGroups` |
-| Async TTS queue | ✅ | `asyncio.Queue`, critical jumps queue |
-| Event history log | ✅ | In-memory deque, 50 entries |
-| `say_text` method | ✅ | Ad-hoc TTS without stored event |
-| `ultra_tts` non-blocking | ✅ | `blocking=False` |
-| Repair issue on failure | ✅ | |
-| Sensor increment | ✅ | Safely wrapped |
-| Type hints + docstrings | ✅ | Full coverage |
+| Spam filter | ✅ | 30 sek samme event |
+| Spam bypass | ✅ | `bypass_spam=True` til test-kald |
+| Quiet hours (konfigurerbar) | ✅ | Læses fra `entry.options` ved hvert kald |
+| Jinja2 templates | ✅ | Besked-rendering med fallback |
+| Betinget afspilning | ✅ | Jinja2 condition felt, fail-open ved fejl |
+| Gruppe-opløsning | ✅ | `group:id` prefix via `HouseVoiceGroups` |
+| Async TTS kø | ✅ | `asyncio.Queue`, critical springer fremad |
+| Queue worker supervision | ✅ | `_restart_worker_if_dead()` ved hvert enqueue |
+| Event historik log | ✅ | In-memory deque, 50 entries |
+| `say_text` metode | ✅ | Ad-hoc TTS uden gemt event |
+| Repair issue ved fejl | ✅ | |
+| Sensor increment | ✅ | Wrapped i try/except |
+
+---
+
+## UltraTTS (ultra_tts.py)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Volume set før TTS | ✅ | Sættes til konfigureret volume |
+| Duck ved aktiv afspilning | ✅ | Kun hvis `state == playing` AND `volume > 0.25` |
+| Volume restore | ✅ | `finally`-blok — garanteret selv ved fejl |
+| MA platform-detection | ✅ | Via `state.attributes["app_id"] == "music_assistant"` |
+| HEOS sibling-detection | ✅ | Strategi 1: device_id. Strategi 2: matching unique_id |
+| HEOS kø pre-clear | ✅ | `clear_playlist` på HEOS-entity før TTS |
+| Speech delay | ✅ | `ceil(len/10) + 3s HEOS buffer`, min 8s |
+| Multi-speaker | ✅ | Komma-separeret string splittes |
+| Volume set på sibling | ✅ | Sætter volumen på både MA og HEOS entity |
 
 ---
 
@@ -122,9 +139,9 @@
 |-----|-------|--------|
 | `test_init.py` | 3 | Setup, unload, service registrering |
 | `test_storage.py` | 7 | Add, get, delete, overwrite |
-| `test_voice_engine.py` | 9 | Spam, quiet hours, Jinja2, speakers, TTS (v2.0 baseline) |
+| `test_voice_engine.py` | 9 | Spam, quiet hours, Jinja2, speakers (v2.0 baseline) |
 | `test_voice_engine_v22.py` | 22 | Queue, bypass_spam, conditions, say_text, groups, historik, lifecycle |
-| `test_groups.py` | 12 | async_load, add, delete, get, resolve_speakers (alle cases) |
+| `test_groups.py` | 12 | async_load, add, delete, get, resolve_speakers |
 | `test_sensor.py` | 6 | Increment, midnight reset, attributter |
 | `test_config_flow.py` | 3 | Form, submit, duplicate abort |
 | `test_websocket.py` | 24 | Alle 9 WS commands + validering |
@@ -132,7 +149,7 @@
 | `test_diagnostics.py` | 4 | Fields, quiet hours, missing data |
 | `test_system_health.py` | 4 | Fields, no storage, register |
 | `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
-| `test_ultra_tts.py` | 22 | duck/speak/restore, HEOS detection, queue clear, empty-queue guard |
+| `test_ultra_tts.py` | 22 | duck/speak/restore, HEOS detection, queue clear, sibling |
 | **Total** | **129** | |
 
 CI: GitHub Actions kører ved hvert push til `main`/`master`/`dev`.
@@ -158,6 +175,6 @@ Ingen. 🟢
 ## Next Recommended Actions
 
 1. Push til GitHub → verificer CI er grøn
-2. HA genstart → test TTS end-to-end på en rigtig speaker (tjek duck/restore i loggen)
+2. `TTS_ENTITY` konfigurerbar via Options Flow
 3. `hass.data[DOMAIN]` → `entry.runtime_data` migration
-4. `TTS_ENTITY` i `ultra_tts.py` gøres konfigurerbar via Options Flow
+4. `test_ultra_tts.py` opdateres til v3.1.1 (sibling-detection tests)

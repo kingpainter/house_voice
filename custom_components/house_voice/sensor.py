@@ -1,4 +1,4 @@
-# VERSION = "2.0.0"
+# VERSION = "3.1.1"
 # File: sensor.py
 # Description: Statistics sensor for House Voice Manager – counts TTS messages today
 

@@ -1,4 +1,4 @@
-# VERSION = "2.2.0"
+# VERSION = "3.1.1"
 # File: diagnostics.py
 # Description: Diagnostics support for House Voice Manager
 

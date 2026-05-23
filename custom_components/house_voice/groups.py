@@ -1,4 +1,4 @@
-# VERSION = "2.2.0"
+# VERSION = "3.1.1"
 # File: groups.py
 # Description: Speaker group storage for House Voice Manager.
 #              Groups map a friendly name to a list of media_player entity IDs.
