@@ -252,3 +252,90 @@ async def test_async_speak_comma_separated_speakers():
         if len(c[0]) > 1 and c[0][1] == "volume_set"
     ]
     assert len(volume_calls) == 4
+
+
+# ── HEOS queue cleanup ────────────────────────────────────────────────────────────────
+
+def test_is_heos_speaker_true(mock_hass):
+    """_is_heos_speaker returns True for an entity with platform='heos'."""
+    entry = MagicMock()
+    entry.platform = "heos"
+
+    with patch(
+        "custom_components.house_voice.ultra_tts.er.async_get"
+    ) as mock_registry:
+        mock_registry.return_value.async_get = MagicMock(return_value=entry)
+        tts = UltraTTS(mock_hass)
+        assert tts._is_heos_speaker("media_player.kokken_2") is True
+
+
+def test_is_heos_speaker_false_for_cast(mock_hass):
+    """_is_heos_speaker returns False for an entity with platform='cast'."""
+    entry = MagicMock()
+    entry.platform = "cast"
+
+    with patch(
+        "custom_components.house_voice.ultra_tts.er.async_get"
+    ) as mock_registry:
+        mock_registry.return_value.async_get = MagicMock(return_value=entry)
+        tts = UltraTTS(mock_hass)
+        assert tts._is_heos_speaker("media_player.stue") is False
+
+
+@pytest.mark.asyncio
+async def test_clear_heos_queue_ignores_empty_queue_error(mock_hass):
+    """_clear_heos_queue silently ignores eid=4 (queue already empty)."""
+    mock_hass.services.async_call = AsyncMock(
+        side_effect=Exception("Unable to clear playlist: Requested data not available (4)")
+    )
+    tts = UltraTTS(mock_hass)
+    # Must not raise
+    await tts._clear_heos_queue("media_player.kokken_2")
+
+
+@pytest.mark.asyncio
+async def test_async_speak_clears_heos_queue_after_tts():
+    """async_speak calls clear_playlist after TTS for HEOS speakers."""
+    hass = _make_hass(volume=0.5)
+    clear_calls = []
+
+    async def mock_call(domain, service, data=None, **kwargs):
+        if service == "clear_playlist":
+            clear_calls.append(entity := kwargs.get("target", {}).get("entity_id", ""))
+
+    hass.services.async_call = mock_call
+
+    tts = UltraTTS(hass)
+    with patch.object(tts, "_is_heos_speaker", return_value=True), \
+         patch("asyncio.sleep", new=AsyncMock()):
+        await tts.async_speak(
+            speaker="media_player.kokken_2",
+            message="Maden er klar",
+            volume=0.5,
+        )
+
+    assert len(clear_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_speak_no_clear_for_non_heos():
+    """async_speak does NOT call clear_playlist for non-HEOS speakers."""
+    hass = _make_hass(volume=0.5)
+    clear_calls = []
+
+    async def mock_call(domain, service, data=None, **kwargs):
+        if service == "clear_playlist":
+            clear_calls.append(service)
+
+    hass.services.async_call = mock_call
+
+    tts = UltraTTS(hass)
+    with patch.object(tts, "_is_heos_speaker", return_value=False), \
+         patch("asyncio.sleep", new=AsyncMock()):
+        await tts.async_speak(
+            speaker="media_player.stue",
+            message="Test",
+            volume=0.5,
+        )
+
+    assert len(clear_calls) == 0

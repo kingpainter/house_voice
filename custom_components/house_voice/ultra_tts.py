@@ -1,8 +1,9 @@
-# VERSION = "3.0.0"
+# VERSION = "3.0.1"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
 #              Replaces the YAML script.ultra_tts with a direct Python implementation.
 #              Handles: volume ducking, tts.speak, dynamic post-speech delay, volume restore.
+#              v3.0.1: HEOS queue cleanup after TTS (clear_playlist, ignore empty-queue error).
 #              Called by VoiceEngine._execute_tts instead of script.ultra_tts.
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import logging
 import math
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,6 +115,14 @@ class UltraTTS:
             await self._set_volumes(speakers, original_volumes)
             _LOGGER.debug("UltraTTS: volume restored for %s", speakers)
 
+            # HEOS-specific: clear the TTS file from the internal queue.
+            # HEOS accumulates TTS files in its queue and replays them on next TTS call.
+            # clear_playlist returns eid=4 when the queue is already empty – this is
+            # normal and must be silently ignored (not treated as an error).
+            for sp in speakers:
+                if self._is_heos_speaker(sp):
+                    await self._clear_heos_queue(sp)
+
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     async def _get_volumes(self, speakers: list[str]) -> dict[str, float]:
@@ -158,6 +168,46 @@ class UltraTTS:
                 _LOGGER.warning(
                     "UltraTTS: volume_set failed for '%s': %s", entity_id, err
                 )
+
+    def _is_heos_speaker(self, entity_id: str) -> bool:
+        """Return True if this entity is provided by the HEOS integration.
+
+        Uses the entity registry to look up the platform. Falls back to False
+        if the entity is not registered (custom/manual entities).
+        """
+        try:
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(entity_id)
+            return entry is not None and entry.platform == "heos"
+        except Exception:  # noqa: BLE001
+            return False
+
+    async def _clear_heos_queue(self, entity_id: str) -> None:
+        """Clear the HEOS internal queue after TTS playback.
+
+        HEOS accumulates TTS mp3 files in its queue and replays them on
+        subsequent TTS calls unless cleared. This is a known HEOS behaviour.
+
+        The clear_playlist call returns eid=4 ('Requested data not available')
+        when the queue is already empty – this is normal and silently ignored.
+        Since HA 2025.2, this error is raised as an exception instead of logged.
+        """
+        try:
+            await self.hass.services.async_call(
+                "media_player",
+                "clear_playlist",
+                {},
+                target={"entity_id": entity_id},
+                blocking=True,
+            )
+            _LOGGER.debug("UltraTTS: HEOS queue cleared for '%s'", entity_id)
+        except Exception as err:  # noqa: BLE001
+            # eid=4 = queue already empty – not an error, ignore silently
+            _LOGGER.debug(
+                "UltraTTS: HEOS clear_playlist for '%s' returned (expected if queue empty): %s",
+                entity_id,
+                err,
+            )
 
     @staticmethod
     def _dynamic_delay(message: str) -> float:

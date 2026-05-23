@@ -4,6 +4,21 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [3.0.1] – 2026-05-23
+
+### Fixed
+- **HEOS queue accumulation** (`ultra_tts.py`): HEOS speakers (Denon/Marantz) accumulate
+  TTS mp3 files in their internal queue and replay old messages on subsequent TTS calls.
+  `UltraTTS` now calls `media_player.clear_playlist` after every TTS on HEOS speakers.
+  The `eid=4` error ("Requested data not available") returned when the queue is already
+  empty is silently ignored — this is normal HEOS behaviour since HA 2025.2.
+- `_is_heos_speaker()` uses the HA entity registry (`entry.platform == "heos"`) to detect
+  HEOS speakers automatically — no manual configuration required.
+- Added 5 new tests in `test_ultra_tts.py` covering HEOS detection, queue clear,
+  empty-queue error handling, and non-HEOS speaker guard. Total: 125 tests.
+
+---
+
 ## [3.0.0] – 2026-05-23
 
 ### Added
