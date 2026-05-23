@@ -212,16 +212,18 @@ class UltraTTS:
     def _needs_queue_clear(self, entity_id: str) -> bool:
         """Return True for platforms that accumulate TTS in an internal queue."""
         try:
-            registry = er.async_get(self.hass)
+            from homeassistant.helpers import entity_registry as er2
+            registry = er2.async_get(self.hass)
             entry = registry.async_get(entity_id)
-            platform = entry.platform if entry else None
             _LOGGER.warning(
-                "UltraTTS: _needs_queue_clear '%s' platform='%s'",
-                entity_id, platform,
+                "UltraTTS: _needs_queue_clear '%s' entry=%s platform=%s",
+                entity_id,
+                entry,
+                entry.platform if entry else None,
             )
-            return entry is not None and entry.platform in ("heos", "music_assistant")
+            return entry is not None and entry.platform in ("heos", "music_assistant", "mass")
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("UltraTTS: _needs_queue_clear failed for '%s': %s", entity_id, err)
+            _LOGGER.warning("UltraTTS: _needs_queue_clear EXCEPTION for '%s': %s", entity_id, err)
             return False
 
     def _is_heos_speaker(self, entity_id: str) -> bool:
