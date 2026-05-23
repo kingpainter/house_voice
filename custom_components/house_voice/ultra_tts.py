@@ -22,13 +22,14 @@ TTS_ENTITY = "tts.home_assistant_cloud"
 # Seconds between volume_set and tts.speak so the speaker settles
 _PRE_SPEAK_DELAY = 1.0
 
-# Minimum post-speech delay (seconds) before volume restore
-_MIN_SPEECH_DELAY = 4.0
+# Minimum post-speech delay (seconds) before volume restore.
+# Covers MA/HEOS startup latency (~3-4s) + shortest TTS messages.
+_MIN_SPEECH_DELAY = 8.0
 
 # Characters per second – used to estimate speech duration
 _CHARS_PER_SECOND = 10.0
 
-# Extra seconds added for HEOS/network latency on top of estimated duration
+# Extra seconds added for HEOS/MA latency on top of estimated duration
 _HEOS_BUFFER = 3.0
 
 # Volume threshold below which we treat the speaker as idle.
@@ -176,28 +177,32 @@ class UltraTTS:
                 _LOGGER.warning("UltraTTS: volume_set failed for '%s': %s", entity_id, err)
 
     def _find_heos_sibling(self, entity_id: str) -> str | None:
-        """Find the direct HEOS entity for a Music Assistant speaker.
-
-        MA and HEOS entities for the same physical device share the same
-        device_id in the entity registry. We look for a sibling entity
-        on the 'heos' platform with the same device.
-
-        Returns the HEOS entity_id, or None if not found.
-        """
+        """Find the direct HEOS entity for a Music Assistant speaker."""
         try:
             registry = er.async_get(self.hass)
             entry = registry.async_get(entity_id)
-            if entry is None or entry.device_id is None:
+            if entry is None:
+                _LOGGER.warning("UltraTTS: '%s' not found in entity registry", entity_id)
                 return None
-            for sibling in registry.entities.get_entries_for_device_id(entry.device_id):
+            if entry.device_id is None:
+                _LOGGER.warning("UltraTTS: '%s' has no device_id", entity_id)
+                return None
+            siblings = registry.entities.get_entries_for_device_id(entry.device_id)
+            _LOGGER.warning(
+                "UltraTTS: device_id=%s siblings=%s",
+                entry.device_id,
+                [(s.entity_id, s.platform) for s in siblings],
+            )
+            for sibling in siblings:
                 if sibling.platform == "heos" and sibling.domain == "media_player":
-                    _LOGGER.debug(
+                    _LOGGER.warning(
                         "UltraTTS: HEOS sibling for '%s' is '%s'",
                         entity_id, sibling.entity_id,
                     )
                     return sibling.entity_id
+            _LOGGER.warning("UltraTTS: no HEOS sibling found for '%s'", entity_id)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("UltraTTS: sibling lookup failed for '%s': %s", entity_id, err)
+            _LOGGER.warning("UltraTTS: sibling lookup failed for '%s': %s", entity_id, err)
         return None
 
     def _needs_queue_clear(self, entity_id: str) -> bool:
