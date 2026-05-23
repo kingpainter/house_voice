@@ -85,6 +85,10 @@ class UltraTTS:
         # For MA speakers, find the underlying HEOS entity for queue management.
         heos_like_speakers = [sp for sp in speakers if self._needs_queue_clear(sp)]
         is_heos_like = bool(heos_like_speakers)
+        _LOGGER.warning(
+            "UltraTTS: platform check – speakers=%s heos_like=%s",
+            speakers, heos_like_speakers,
+        )
 
         # Build map: MA entity → HEOS sibling (for clear_playlist + volume)
         # If a speaker has no sibling, it clears its own queue.
@@ -206,17 +210,18 @@ class UltraTTS:
         return None
 
     def _needs_queue_clear(self, entity_id: str) -> bool:
-        """Return True for platforms that accumulate TTS in an internal queue.
-
-        Currently: heos (Denon/Marantz) and music_assistant.
-        Both require clear_playlist before speaking to prevent old messages
-        replaying. Music Assistant is also slower to start, so gets extra buffer.
-        """
+        """Return True for platforms that accumulate TTS in an internal queue."""
         try:
             registry = er.async_get(self.hass)
             entry = registry.async_get(entity_id)
+            platform = entry.platform if entry else None
+            _LOGGER.warning(
+                "UltraTTS: _needs_queue_clear '%s' platform='%s'",
+                entity_id, platform,
+            )
             return entry is not None and entry.platform in ("heos", "music_assistant")
-        except Exception:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("UltraTTS: _needs_queue_clear failed for '%s': %s", entity_id, err)
             return False
 
     def _is_heos_speaker(self, entity_id: str) -> bool:
