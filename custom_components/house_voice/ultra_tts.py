@@ -1,9 +1,8 @@
-# VERSION = "3.1.0"
+# VERSION = "3.1.1"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
-#              v3.1.0: Simplified – volume set before TTS, fixed delay after,
-#              no state polling (unreliable with Music Assistant/HEOS).
-#              HEOS queue pre-clear before speak only.
+#              Handles volume set, tts.speak, dynamic delay, volume restore.
+#              HEOS/MA queue pre-clear via sibling entity detection.
 
 from __future__ import annotations
 
@@ -16,28 +15,14 @@ from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
-# TTS entity used for speech output (HA Cloud TTS)
 TTS_ENTITY = "tts.home_assistant_cloud"
 
-# Seconds between volume_set and tts.speak so the speaker settles
 _PRE_SPEAK_DELAY = 1.0
-
-# Minimum post-speech delay (seconds) before volume restore.
-# Covers MA/HEOS startup latency (~3-4s) + shortest TTS messages.
 _MIN_SPEECH_DELAY = 8.0
-
-# Characters per second – used to estimate speech duration
 _CHARS_PER_SECOND = 10.0
-
-# Extra seconds added for HEOS/MA latency on top of estimated duration
 _HEOS_BUFFER = 3.0
-
-# Volume threshold below which we treat the speaker as idle.
-# Music Assistant reports ~0.16 at idle/low – we use 0.25 as cutoff
-# so we never accidentally duck a silent speaker down further.
 _IDLE_VOLUME_THRESHOLD = 0.25
 
-# Duck volume multipliers per priority (only used when music is actively playing)
 _DUCK_FACTOR: dict[str, float] = {
     "critical": 0.0,
     "normal":   0.25,
@@ -64,64 +49,45 @@ class UltraTTS:
             _LOGGER.warning("UltraTTS: no valid speakers in '%s', skipping", speaker)
             return
 
-        _LOGGER.warning(
-            "UltraTTS v3.1.0 RUNNING: speaker='%s' message='%s' volume=%s priority=%s",
-            speaker, message, volume, priority,
-        )
-
-        # Read original volumes for restore
         original_volumes = await self._get_volumes(speakers)
-        _LOGGER.warning("UltraTTS: original_volumes=%s", original_volumes)
 
-        # Determine per-speaker TTS volume:
-        # Always speak at the configured volume.
-        # Only duck if music is actively playing (original > threshold AND state is 'playing').
+        # Duck only if music is actively playing; otherwise use configured volume
         duck_factor = _DUCK_FACTOR.get(priority, _DUCK_FACTOR["normal"])
         tts_volumes = {}
         for sp in speakers:
             state = self.hass.states.get(sp)
             is_playing = state and state.state == "playing"
-            orig = original_volumes[sp]
-            if is_playing and orig > _IDLE_VOLUME_THRESHOLD:
-                # Music is actively playing – duck it
+            if is_playing and original_volumes[sp] > _IDLE_VOLUME_THRESHOLD:
                 tts_volumes[sp] = volume * duck_factor
             else:
-                # Idle or low volume – set directly to configured volume
                 tts_volumes[sp] = volume
-        _LOGGER.warning("UltraTTS: tts_volumes=%s (original=%s)", tts_volumes, original_volumes)
 
-        # Detect platform for platform-specific behaviour.
+        # Detect MA/HEOS speakers that need queue management
         heos_like_speakers = [sp for sp in speakers if self._needs_queue_clear(sp)]
         is_heos_like = bool(heos_like_speakers)
-        _LOGGER.warning("UltraTTS: heos_like_speakers=%s", heos_like_speakers)
 
-        # Build map: MA entity → HEOS sibling (for clear_playlist + volume)
-        # If a speaker has no sibling, it clears its own queue.
+        # Find HEOS sibling for each MA speaker (for clear_playlist + volume)
         sibling_map: dict[str, str] = {}
         for sp in heos_like_speakers:
             sibling = self._find_heos_sibling(sp)
             if sibling:
                 sibling_map[sp] = sibling
-                _LOGGER.debug("UltraTTS: will use '%s' for queue+volume of '%s'", sibling, sp)
 
         try:
-            # 1. Set TTS volume on MA entity + HEOS sibling
-            # HEOS sibling controls the physical volume on Denon hardware.
+            # Set TTS volume on MA entity + HEOS sibling
             await self._set_volumes(speakers, tts_volumes)
-            sibling_volumes = {sibling_map[sp]: tts_volumes[sp] for sp in sibling_map}
-            if sibling_volumes:
+            if sibling_map:
+                sibling_volumes = {sibling_map[sp]: tts_volumes[sp] for sp in sibling_map}
                 await self._set_volumes(list(sibling_volumes.keys()), sibling_volumes)
-            _LOGGER.debug("UltraTTS: volume → MA=%s HEOS=%s", tts_volumes, sibling_volumes)
+            _LOGGER.debug("UltraTTS: volume → %s (sibling=%s)", tts_volumes, sibling_map)
 
-            # 2. Let volume settle
             await asyncio.sleep(_PRE_SPEAK_DELAY)
 
-            # 3. Clear stale queue on HEOS sibling (or MA entity if no sibling)
+            # Clear stale queue on HEOS sibling (or MA entity if no sibling)
             for sp in heos_like_speakers:
-                target = sibling_map.get(sp, sp)
-                await self._clear_queue(target)
+                await self._clear_queue(sibling_map.get(sp, sp))
 
-            # 4. Speak
+            # Speak
             await self.hass.services.async_call(
                 "tts", "speak",
                 {
@@ -132,50 +98,41 @@ class UltraTTS:
                 target={"entity_id": TTS_ENTITY},
                 blocking=False,
             )
-            _LOGGER.debug("UltraTTS: tts.speak sent for '%s'", speaker)
 
-            # 5. Wait for playback to finish.
-            # HEOS/Music Assistant entity state is unreliable for polling
-            # (state may not reflect TTS playback accurately), so we use a
-            # calculated delay: estimated speech duration + HEOS buffer.
             delay = self._speech_delay(message, heos=is_heos_like)
-            _LOGGER.debug(
-                "UltraTTS: waiting %.1f s for '%s' (heos=%s, len=%d)",
-                delay, speaker, is_heos_like, len(message),
-            )
+            _LOGGER.debug("UltraTTS: waiting %.1f s (heos=%s)", delay, is_heos_like)
             await asyncio.sleep(delay)
 
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("UltraTTS: speak failed for '%s': %s", speaker, err)
 
         finally:
-            # 6. Restore volume on MA entity + HEOS sibling
+            # Restore volume on MA entity + HEOS sibling
             await self._set_volumes(speakers, original_volumes)
-            sibling_restores = {sibling_map[sp]: original_volumes[sp] for sp in sibling_map}
-            if sibling_restores:
+            if sibling_map:
+                sibling_restores = {sibling_map[sp]: original_volumes[sp] for sp in sibling_map}
                 await self._set_volumes(list(sibling_restores.keys()), sibling_restores)
-            _LOGGER.debug("UltraTTS: volume restored → MA=%s HEOS=%s", original_volumes, sibling_restores)
+            _LOGGER.debug("UltraTTS: volume restored → %s", original_volumes)
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     async def _get_volumes(self, speakers: list[str]) -> dict[str, float]:
         """Read current volume_level from state. Falls back to 0.3."""
-        _LOGGER.warning("UltraTTS: _get_volumes called for %s", speakers)
         result: dict[str, float] = {}
         for entity_id in speakers:
             try:
                 state = self.hass.states.get(entity_id)
-                _LOGGER.warning("UltraTTS: state for '%s' = %s", entity_id, state)
                 vol = state.attributes.get("volume_level") if state else None
                 result[entity_id] = float(vol) if vol is not None else 0.3
+                if vol is None:
+                    _LOGGER.warning("UltraTTS: '%s' volume_level unavailable, defaulting to 0.3", entity_id)
             except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("UltraTTS: _get_volumes EXCEPTION for '%s': %s", entity_id, err)
+                _LOGGER.warning("UltraTTS: _get_volumes error for '%s': %s", entity_id, err)
                 result[entity_id] = 0.3
-        _LOGGER.warning("UltraTTS: _get_volumes result=%s", result)
         return result
 
     async def _set_volumes(self, speakers: list[str], volumes: dict[str, float]) -> None:
-        """Call media_player.volume_set for each speaker. Errors are logged, not raised."""
+        """Call media_player.volume_set for each speaker."""
         for entity_id in speakers:
             target_vol = round(max(0.0, min(1.0, volumes[entity_id])), 3)
             try:
@@ -188,13 +145,23 @@ class UltraTTS:
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("UltraTTS: volume_set failed for '%s': %s", entity_id, err)
 
+    def _needs_queue_clear(self, entity_id: str) -> bool:
+        """Return True for MA/HEOS speakers that accumulate TTS in their queue."""
+        state = self.hass.states.get(entity_id)
+        if state and state.attributes.get("app_id") == "music_assistant":
+            return True
+        try:
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(entity_id)
+            return entry is not None and entry.platform in ("heos", "music_assistant", "mass")
+        except Exception:  # noqa: BLE001
+            return False
+
     def _find_heos_sibling(self, entity_id: str) -> str | None:
         """Find the direct HEOS entity for a Music Assistant speaker.
 
-        Tries two strategies:
-        1. Same device_id (works if MA and HEOS share a device)
-        2. Match on MA unique_id == HEOS unique_id (Music Assistant uses
-           the HEOS player_id as unique_id)
+        Strategy 1: same device_id.
+        Strategy 2: matching unique_id (MA uses HEOS player_id as unique_id).
         """
         try:
             registry = er.async_get(self.hass)
@@ -202,59 +169,29 @@ class UltraTTS:
             if entry is None:
                 return None
 
-            # Strategy 1: same device_id
+            # Strategy 1: same device
             if entry.device_id:
                 for sibling in registry.entities.get_entries_for_device_id(entry.device_id):
                     if sibling.platform == "heos" and sibling.domain == "media_player":
-                        _LOGGER.warning("UltraTTS: HEOS sibling (device) '%s' → '%s'", entity_id, sibling.entity_id)
+                        _LOGGER.debug("UltraTTS: HEOS sibling (device) %s → %s", entity_id, sibling.entity_id)
                         return sibling.entity_id
 
-            # Strategy 2: match unique_id across all HEOS media_player entities
-            # MA uses the HEOS player_id as unique_id (e.g. '155202784')
-            ma_uid = entry.unique_id
+            # Strategy 2: matching unique_id
             for e in registry.entities.values():
-                if e.platform == "heos" and e.domain == "media_player" and e.unique_id == ma_uid:
-                    _LOGGER.warning("UltraTTS: HEOS sibling (uid) '%s' → '%s'", entity_id, e.entity_id)
+                if e.platform == "heos" and e.domain == "media_player" and e.unique_id == entry.unique_id:
+                    _LOGGER.debug("UltraTTS: HEOS sibling (uid) %s → %s", entity_id, e.entity_id)
                     return e.entity_id
 
-            _LOGGER.warning(
-                "UltraTTS: no HEOS sibling found for '%s' (uid=%s) – will clear queue on MA entity",
-                entity_id, ma_uid,
-            )
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("UltraTTS: sibling lookup failed for '%s': %s", entity_id, err)
         return None
 
-    def _needs_queue_clear(self, entity_id: str) -> bool:
-        """Return True for platforms that accumulate TTS in an internal queue."""
-        # Check state attributes for app_id as fallback –
-        # more reliable than entity registry platform lookup.
-        state = self.hass.states.get(entity_id)
-        if state:
-            app_id = state.attributes.get("app_id", "")
-            if app_id == "music_assistant":
-                _LOGGER.warning("UltraTTS: '%s' is Music Assistant (app_id)", entity_id)
-                return True
-        # Fallback: entity registry platform check
-        try:
-            registry = er.async_get(self.hass)
-            entry = registry.async_get(entity_id)
-            platform = entry.platform if entry else "unknown"
-            _LOGGER.warning("UltraTTS: '%s' platform='%s'", entity_id, platform)
-            return entry is not None and entry.platform in ("heos", "music_assistant", "mass")
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("UltraTTS: _needs_queue_clear failed '%s': %s", entity_id, err)
-            return False
-
     def _is_heos_speaker(self, entity_id: str) -> bool:
-        """Legacy alias – kept for test compatibility."""
+        """Legacy alias for test compatibility."""
         return self._needs_queue_clear(entity_id)
 
     async def _clear_queue(self, entity_id: str) -> None:
-        """Clear the internal queue on HEOS/Music Assistant speakers.
-
-        eid=4 (already empty) is silently ignored.
-        """
+        """Clear MA/HEOS queue. eid=4 (already empty) is silently ignored."""
         try:
             await self.hass.services.async_call(
                 "media_player", "clear_playlist", {},
@@ -266,16 +203,12 @@ class UltraTTS:
             _LOGGER.debug("UltraTTS: clear_playlist '%s' (likely empty): %s", entity_id, err)
 
     async def _clear_heos_queue(self, entity_id: str) -> None:
-        """Legacy alias – kept for test compatibility."""
+        """Legacy alias for test compatibility."""
         await self._clear_queue(entity_id)
 
     @staticmethod
     def _speech_delay(message: str, heos: bool = False) -> float:
-        """Estimate playback duration + buffer.
-
-        Formula: ceil(len / chars_per_sec), minimum _MIN_SPEECH_DELAY.
-        HEOS adds _HEOS_BUFFER for network/buffering latency.
-        """
+        """Estimate playback duration. HEOS/MA adds buffer for network latency."""
         estimated = math.ceil(len(message) / _CHARS_PER_SECOND)
         delay = max(_MIN_SPEECH_DELAY, float(estimated))
         if heos:
