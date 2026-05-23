@@ -56,16 +56,22 @@ async def async_register_panel(hass: HomeAssistant) -> None:
 
     # Register static HTTP path – once per HA session only.
     # aiohttp's router is permanent: re-registering the same URL after a reload
-    # raises RuntimeError. We guard with a session-level key that survives unload.
+    # raises RuntimeError. We catch it explicitly rather than relying on a flag
+    # that may not survive all reload scenarios.
     if not hass.data.get(_SESSION_KEY_STATIC, False):
-        if _HAS_STATIC_PATH_CONFIG:
-            await hass.http.async_register_static_paths([
-                StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
-            ])
-        else:
-            hass.http.register_static_path(PANEL_URL, panel_file, cache_headers=False)
-        hass.data[_SESSION_KEY_STATIC] = True
-        _LOGGER.info("House Voice panel static path registered: %s → %s", PANEL_URL, panel_file)
+        try:
+            if _HAS_STATIC_PATH_CONFIG:
+                await hass.http.async_register_static_paths([
+                    StaticPathConfig(PANEL_URL, panel_file, cache_headers=False)
+                ])
+            else:
+                hass.http.register_static_path(PANEL_URL, panel_file, cache_headers=False)
+            hass.data[_SESSION_KEY_STATIC] = True
+            _LOGGER.info("House Voice panel static path registered: %s → %s", PANEL_URL, panel_file)
+        except RuntimeError:
+            # Route already registered from a previous load – safe to continue
+            hass.data[_SESSION_KEY_STATIC] = True
+            _LOGGER.debug("House Voice panel static path already exists in router, skipping")
     else:
         _LOGGER.debug("House Voice panel static path already registered, skipping")
 
