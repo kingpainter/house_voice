@@ -151,15 +151,18 @@ class UltraTTS:
 
     async def _get_volumes(self, speakers: list[str]) -> dict[str, float]:
         """Read current volume_level from state. Falls back to 0.3."""
+        _LOGGER.warning("UltraTTS: _get_volumes called for %s", speakers)
         result: dict[str, float] = {}
         for entity_id in speakers:
-            state = self.hass.states.get(entity_id)
-            vol = state.attributes.get("volume_level") if state else None
-            result[entity_id] = float(vol) if vol is not None else 0.3
-            if vol is None:
-                _LOGGER.warning(
-                    "UltraTTS: '%s' volume_level unavailable, defaulting to 0.3", entity_id
-                )
+            try:
+                state = self.hass.states.get(entity_id)
+                _LOGGER.warning("UltraTTS: state for '%s' = %s", entity_id, state)
+                vol = state.attributes.get("volume_level") if state else None
+                result[entity_id] = float(vol) if vol is not None else 0.3
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("UltraTTS: _get_volumes EXCEPTION for '%s': %s", entity_id, err)
+                result[entity_id] = 0.3
+        _LOGGER.warning("UltraTTS: _get_volumes result=%s", result)
         return result
 
     async def _set_volumes(self, speakers: list[str], volumes: dict[str, float]) -> None:
