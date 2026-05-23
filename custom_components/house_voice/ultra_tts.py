@@ -75,21 +75,36 @@ class UltraTTS:
             for sp in speakers
         }
 
-        # Detect platform for platform-specific behaviour
+        # Detect platform for platform-specific behaviour.
+        # For MA speakers, find the underlying HEOS entity for queue management.
         heos_like_speakers = [sp for sp in speakers if self._needs_queue_clear(sp)]
         is_heos_like = bool(heos_like_speakers)
 
+        # Build map: MA entity → HEOS sibling (for clear_playlist + volume)
+        # If a speaker has no sibling, it clears its own queue.
+        sibling_map: dict[str, str] = {}
+        for sp in heos_like_speakers:
+            sibling = self._find_heos_sibling(sp)
+            if sibling:
+                sibling_map[sp] = sibling
+                _LOGGER.debug("UltraTTS: will use '%s' for queue+volume of '%s'", sibling, sp)
+
         try:
-            # 1. Set TTS volume
+            # 1. Set TTS volume on MA entity + HEOS sibling
+            # HEOS sibling controls the physical volume on Denon hardware.
             await self._set_volumes(speakers, tts_volumes)
-            _LOGGER.debug("UltraTTS: volume → %s", tts_volumes)
+            sibling_volumes = {sibling_map[sp]: tts_volumes[sp] for sp in sibling_map}
+            if sibling_volumes:
+                await self._set_volumes(list(sibling_volumes.keys()), sibling_volumes)
+            _LOGGER.debug("UltraTTS: volume → MA=%s HEOS=%s", tts_volumes, sibling_volumes)
 
             # 2. Let volume settle
             await asyncio.sleep(_PRE_SPEAK_DELAY)
 
-            # 3. Clear stale queue entries before speaking (HEOS + Music Assistant)
+            # 3. Clear stale queue on HEOS sibling (or MA entity if no sibling)
             for sp in heos_like_speakers:
-                await self._clear_queue(sp)
+                target = sibling_map.get(sp, sp)
+                await self._clear_queue(target)
 
             # 4. Speak
             await self.hass.services.async_call(
@@ -119,9 +134,12 @@ class UltraTTS:
             _LOGGER.error("UltraTTS: speak failed for '%s': %s", speaker, err)
 
         finally:
-            # 6. Restore volume unconditionally
+            # 6. Restore volume on MA entity + HEOS sibling
             await self._set_volumes(speakers, original_volumes)
-            _LOGGER.debug("UltraTTS: volume restored → %s", original_volumes)
+            sibling_restores = {sibling_map[sp]: original_volumes[sp] for sp in sibling_map}
+            if sibling_restores:
+                await self._set_volumes(list(sibling_restores.keys()), sibling_restores)
+            _LOGGER.debug("UltraTTS: volume restored → MA=%s HEOS=%s", original_volumes, sibling_restores)
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -151,6 +169,31 @@ class UltraTTS:
                 )
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("UltraTTS: volume_set failed for '%s': %s", entity_id, err)
+
+    def _find_heos_sibling(self, entity_id: str) -> str | None:
+        """Find the direct HEOS entity for a Music Assistant speaker.
+
+        MA and HEOS entities for the same physical device share the same
+        device_id in the entity registry. We look for a sibling entity
+        on the 'heos' platform with the same device.
+
+        Returns the HEOS entity_id, or None if not found.
+        """
+        try:
+            registry = er.async_get(self.hass)
+            entry = registry.async_get(entity_id)
+            if entry is None or entry.device_id is None:
+                return None
+            for sibling in registry.entities.get_entries_for_device_id(entry.device_id):
+                if sibling.platform == "heos" and sibling.domain == "media_player":
+                    _LOGGER.debug(
+                        "UltraTTS: HEOS sibling for '%s' is '%s'",
+                        entity_id, sibling.entity_id,
+                    )
+                    return sibling.entity_id
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("UltraTTS: sibling lookup failed for '%s': %s", entity_id, err)
+        return None
 
     def _needs_queue_clear(self, entity_id: str) -> bool:
         """Return True for platforms that accumulate TTS in an internal queue.
