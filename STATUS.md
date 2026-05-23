@@ -1,8 +1,8 @@
 # House Voice – Project Status
 
-**Version:** 2.2.0
-**Date:** 2026-05-14
-**Status:** Active development – v2.2.0 complete, Gold tier in progress
+**Version:** 2.2.1
+**Date:** 2026-05-23
+**Status:** Active development – v2.2.1 complete, Gold tier in progress
 
 ---
 
@@ -14,6 +14,7 @@
 | v2.0 – UI Panel + WebSocket API | ✅ Complete |
 | v2.1 – Stability + code quality | ✅ Complete |
 | v2.2 – Speaker groups, queue, conditions, history | ✅ Complete |
+| v2.2.1 – Test coverage + queue supervision | ✅ Complete |
 | Gold tier compliance | 🔄 In progress (`test_full_coverage` remaining) |
 
 ---
@@ -26,7 +27,7 @@
 | `manifest.json` | 2.2.0 | Bumped |
 | `const.py` | 2.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
 | `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
-| `voice_engine.py` | 2.2.0 | +queue, groups, conditions, history, `say_text`, configurable quiet hours |
+| `voice_engine.py` | 2.2.1 | +queue worker supervision, `_restart_worker_if_dead()`, `CancelledError` handling |
 | `groups.py` | 2.2.0 | NEW – speaker group storage + `resolve_speakers()` |
 | `storage.py` | 2.1.0 | Unchanged |
 | `panel.py` | 2.0.0 | Unchanged |
@@ -111,14 +112,31 @@
 
 ---
 
+## Tests
+
+| Fil | Tests | Dækker |
+|-----|-------|--------|
+| `test_init.py` | 3 | Setup, unload, service registrering |
+| `test_storage.py` | 7 | Add, get, delete, overwrite |
+| `test_voice_engine.py` | 9 | Spam, quiet hours, Jinja2, speakers, TTS (v2.0 baseline) |
+| `test_voice_engine_v22.py` | 22 | Queue, bypass_spam, conditions, say_text, groups, historik, lifecycle |
+| `test_groups.py` | 12 | async_load, add, delete, get, resolve_speakers (alle cases) |
+| `test_sensor.py` | 6 | Increment, midnight reset, attributter |
+| `test_config_flow.py` | 3 | Form, submit, duplicate abort |
+| `test_websocket.py` | 24 | Alle 9 WS commands + validering |
+| `test_panel.py` | 5 | Register, double-guard, unregister |
+| `test_diagnostics.py` | 4 | Fields, quiet hours, missing data |
+| `test_system_health.py` | 4 | Fields, no storage, register |
+| `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
+| **Total** | **103** | |
+
+CI: GitHub Actions kører ved hvert push til `main`/`master`/`dev`.
+
+---
+
 ## Known Issues / Technical Debt
 
-| Item | Priority | Note |
-|------|----------|------|
-| Tests need updating | Medium | New features not yet covered: groups, history, conditions, `say_text`, queue |
-| `hass.data[DOMAIN]` → `entry.runtime_data` | Low | Deferred to v3 |
-| Native `ultra_tts.py` | V3 | Replaces YAML script with Python |
-| Blueprint folder must be created manually | One-time | `blueprints/` directory doesn't auto-create |
+Ingen. 🟢
 
 ---
 
@@ -134,8 +152,7 @@
 
 ## Next Recommended Actions
 
-1. Create `blueprints/` folder in repo root, place `house_voice_say.yaml` inside
-2. Push to GitHub → verify CI passes
-3. HA restart → test: groups, conditions, history tab, quiet hours Options Flow
-4. Update tests for v2.2.0 (groups, history, conditions, say_text, queue)
-5. Native `ultra_tts.py` (v3)
+1. Push til GitHub → verificer CI er grøn
+2. HA genstart → test: groups, conditions, history tab, quiet hours Options Flow
+3. Native `ultra_tts.py` (v3)
+4. `hass.data[DOMAIN]` → `entry.runtime_data` migration (v3)

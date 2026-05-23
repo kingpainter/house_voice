@@ -85,7 +85,12 @@ class VoiceEngine:
     # ── Queue worker ───────────────────────────────────────────────────────────
 
     async def _queue_worker(self) -> None:
-        """Process TTS jobs from the queue one at a time."""
+        """Process TTS jobs from the queue one at a time.
+
+        Runs indefinitely until cancelled. If a job raises an unhandled
+        exception the error is logged and the worker continues with the
+        next job in the queue (no silent death).
+        """
         while True:
             job = await self._queue.get()
             try:
@@ -96,10 +101,38 @@ class VoiceEngine:
                     priority=job["priority"],
                     event_id=job.get("event_id", "say_text"),
                 )
+            except asyncio.CancelledError:
+                # Propagate cancellation so stop() can join cleanly
+                self._queue.task_done()
+                raise
             except Exception as err:  # noqa: BLE001
-                _LOGGER.error("House Voice: queue worker error: %s", err)
+                _LOGGER.error(
+                    "House Voice: queue worker error for event '%s': %s",
+                    job.get("event_id", "?"),
+                    err,
+                )
             finally:
                 self._queue.task_done()
+
+    def _restart_worker_if_dead(self) -> None:
+        """Restart the queue worker task if it has died unexpectedly.
+
+        Called before every enqueue so a crashed worker never silently
+        swallows pending jobs.
+        """
+        if self._queue_task is None or self._queue_task.done():
+            exc = (
+                self._queue_task.exception()
+                if self._queue_task and not self._queue_task.cancelled()
+                else None
+            )
+            if exc:
+                _LOGGER.error(
+                    "House Voice: queue worker died unexpectedly: %s – restarting", exc
+                )
+            else:
+                _LOGGER.warning("House Voice: queue worker was not running – restarting")
+            self._queue_task = self.hass.loop.create_task(self._queue_worker())
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -288,7 +321,12 @@ class VoiceEngine:
         volume: float,
         priority: str,
     ) -> None:
-        """Add a TTS job to the queue. Critical priority jumps the queue."""
+        """Add a TTS job to the queue. Critical priority jumps the queue.
+
+        Also restarts the queue worker if it has died unexpectedly.
+        """
+        # Guard: restart worker if it died since last call
+        self._restart_worker_if_dead()
         job = {
             "event_id":   event_id,
             "message":    message,

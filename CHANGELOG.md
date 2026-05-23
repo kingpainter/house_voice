@@ -4,6 +4,33 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [2.2.1] – 2026-05-23
+
+### Added
+- `test_groups.py` – 12 new tests covering `HouseVoiceGroups`: `async_load`, `add_group`,
+  `delete_group`, `get_group`, and all `resolve_speakers` cases (plain, group ref, mixed,
+  dedup, unknown group, empty list).
+- `test_voice_engine_v22.py` – 22 new tests for v2.2.0 `VoiceEngine` features: async queue,
+  `bypass_spam`, conditions (true/false/error/fail-open), `say_text` (quiet hours, critical
+  bypass, no speakers), group resolution via engine, history log (spoken/spam/quiet hours),
+  history ordering and max-50 cap, quiet hours from `entry.options`, queue worker lifecycle.
+- `test_websocket.py` – 14 new tests for `get_groups`, `save_group`, `delete_group`,
+  `get_history` WebSocket commands.
+- Queue worker supervision in `VoiceEngine._restart_worker_if_dead()` – called before
+  every enqueue. If the worker task has died unexpectedly, the failure is logged and the
+  worker is automatically restarted so queued messages are never silently dropped.
+
+### Changed
+- `conftest.py` updated to v2.2.0: new `mock_groups`, `mock_entry` fixtures; `mock_engine`
+  uses correct 4-parameter `VoiceEngine` signature; `mock_hass` exposes `hass.loop`.
+- `voice_engine._queue_worker`: `asyncio.CancelledError` is now re-raised correctly so
+  `stop()` can join the task cleanly; event_id is included in worker error log messages.
+- `voice_engine._enqueue`: calls `_restart_worker_if_dead()` before putting a job in the
+  queue to guard against silent worker death.
+- `sample_event` fixture now includes `condition: ""` field to match v2.2.0 event structure.
+
+---
+
 ## [2.2.0] – 2026-05-14
 
 ### Added

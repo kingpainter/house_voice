@@ -221,3 +221,134 @@ async def test_ws_test_event_engine_not_ready(mock_hass):
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "not_ready"
+
+
+# ── get_groups ──────────────────────────────────────────────────────────────────
+
+def test_ws_get_groups_returns_all(mock_hass, mock_groups):
+    """get_groups returns all stored groups."""
+    from custom_components.house_voice.websocket import ws_get_groups
+
+    mock_groups.data = {
+        "alle_rum": {"name": "Alle rum", "speakers": ["media_player.stue"]}
+    }
+    mock_hass.data[DOMAIN] = {"groups": mock_groups}
+
+    conn = _make_connection()
+    ws_get_groups(mock_hass, conn, _make_msg())
+
+    conn.send_result.assert_called_once()
+    result = conn.send_result.call_args[0][1]
+    assert "alle_rum" in result["groups"]
+
+
+def test_ws_get_groups_not_ready(mock_hass):
+    """get_groups returns error if groups is not ready."""
+    from custom_components.house_voice.websocket import ws_get_groups
+
+    mock_hass.data[DOMAIN] = {"groups": None}
+
+    conn = _make_connection()
+    ws_get_groups(mock_hass, conn, _make_msg())
+
+    conn.send_error.assert_called_once()
+    assert conn.send_error.call_args[0][1] == "not_ready"
+
+
+# ── save_group ──────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ws_save_group_success(mock_hass, mock_groups):
+    """save_group stores group and returns success."""
+    from custom_components.house_voice.websocket import ws_save_group
+
+    mock_hass.data[DOMAIN] = {"groups": mock_groups}
+
+    conn = _make_connection()
+    msg = _make_msg(
+        group_id="alle_rum",
+        name="Alle rum",
+        speakers=["media_player.stue", "media_player.kokken"],
+    )
+    await ws_save_group(mock_hass, conn, msg)
+
+    conn.send_result.assert_called_once()
+    assert conn.send_result.call_args[0][1]["success"] is True
+    assert "alle_rum" in mock_groups.data
+
+
+@pytest.mark.asyncio
+async def test_ws_save_group_empty_id(mock_hass, mock_groups):
+    """save_group returns error for empty group_id."""
+    from custom_components.house_voice.websocket import ws_save_group
+
+    mock_hass.data[DOMAIN] = {"groups": mock_groups}
+
+    conn = _make_connection()
+    msg = _make_msg(group_id="  ", name="Test", speakers=["media_player.stue"])
+    await ws_save_group(mock_hass, conn, msg)
+
+    conn.send_error.assert_called_once()
+    assert conn.send_error.call_args[0][1] == "invalid_input"
+
+
+# ── delete_group ────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ws_delete_group_success(mock_hass, mock_groups):
+    """delete_group removes group and returns success."""
+    from custom_components.house_voice.websocket import ws_delete_group
+
+    mock_groups.data["g1"] = {"name": "Test", "speakers": ["media_player.a"]}
+    mock_hass.data[DOMAIN] = {"groups": mock_groups}
+
+    conn = _make_connection()
+    await ws_delete_group(mock_hass, conn, _make_msg(group_id="g1"))
+
+    conn.send_result.assert_called_once()
+    assert "g1" not in mock_groups.data
+
+
+@pytest.mark.asyncio
+async def test_ws_delete_group_not_found(mock_hass, mock_groups):
+    """delete_group returns error for unknown group_id."""
+    from custom_components.house_voice.websocket import ws_delete_group
+
+    mock_hass.data[DOMAIN] = {"groups": mock_groups}
+
+    conn = _make_connection()
+    await ws_delete_group(mock_hass, conn, _make_msg(group_id="unknown"))
+
+    conn.send_error.assert_called_once()
+    assert conn.send_error.call_args[0][1] == "not_found"
+
+
+# ── get_history ─────────────────────────────────────────────────────────────────
+
+def test_ws_get_history_returns_list(mock_hass, mock_engine):
+    """get_history returns history list from engine."""
+    from custom_components.house_voice.websocket import ws_get_history
+
+    mock_engine._log_history("ev1", "Hej", "spoken")
+    mock_hass.data[DOMAIN] = {"engine": mock_engine}
+
+    conn = _make_connection()
+    ws_get_history(mock_hass, conn, _make_msg())
+
+    conn.send_result.assert_called_once()
+    result = conn.send_result.call_args[0][1]
+    assert len(result["history"]) == 1
+    assert result["history"][0]["event_id"] == "ev1"
+
+
+def test_ws_get_history_engine_not_ready(mock_hass):
+    """get_history returns error if engine is not ready."""
+    from custom_components.house_voice.websocket import ws_get_history
+
+    mock_hass.data[DOMAIN] = {"engine": None}
+
+    conn = _make_connection()
+    ws_get_history(mock_hass, conn, _make_msg())
+
+    conn.send_error.assert_called_once()
+    assert conn.send_error.call_args[0][1] == "not_ready"
