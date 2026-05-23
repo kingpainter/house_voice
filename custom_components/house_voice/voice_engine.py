@@ -357,12 +357,12 @@ class VoiceEngine:
         priority: str,
         event_id: str,
     ) -> None:
-        """Execute a single TTS call via the native UltraTTS engine.
-
-        Falls back to script.ultra_tts if UltraTTS raises, so the YAML
-        script can still be used as a safety net during the v2→v3 transition.
-        """
+        """Execute a single TTS call via the native UltraTTS engine."""
         from .ultra_tts import UltraTTS
+        _LOGGER.warning(
+            "House Voice: _execute_tts called – speaker='%s' event='%s' volume=%s",
+            speaker_str, event_id, volume,
+        )
         try:
             tts = UltraTTS(self.hass)
             await tts.async_speak(
@@ -372,6 +372,10 @@ class VoiceEngine:
                 priority=priority,
             )
         except Exception as err:
+            _LOGGER.error(
+                "House Voice: UltraTTS failed for '%s': %s",
+                event_id, err, exc_info=True,
+            )
             from .repairs import raise_issue_ultra_tts_missing
             raise_issue_ultra_tts_missing(self.hass)
             raise HomeAssistantError(
