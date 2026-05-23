@@ -183,6 +183,61 @@ class UltraTTS:
                     "UltraTTS: volume_set failed for '%s': %s", entity_id, err
                 )
 
+    async def _wait_for_idle(
+        self,
+        entity_id: str,
+        timeout: float,
+    ) -> None:
+        """Wait until the media player is no longer playing TTS.
+
+        Strategy:
+        1. Wait up to 5 s for state to reach 'playing' (HEOS startup latency).
+        2. Once playing, poll every 0.5 s until state leaves 'playing'.
+        3. Hard timeout = max(timeout, 30) seconds total to prevent hanging.
+
+        This avoids volume restore firing mid-sentence regardless of
+        network latency or message length.
+        """
+        hard_limit = max(timeout, 30.0)
+        poll_interval = 0.5
+        startup_wait = 6.0   # max time to wait for 'playing' to appear
+        elapsed = 0.0
+
+        # Phase 1: wait for 'playing' state (handles HEOS buffering delay)
+        while elapsed < startup_wait:
+            state = self.hass.states.get(entity_id)
+            if state and state.state == "playing":
+                _LOGGER.debug("UltraTTS: '%s' started playing after %.1f s", entity_id, elapsed)
+                break
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+        else:
+            # Never reached 'playing' – fall back to estimated delay
+            _LOGGER.debug(
+                "UltraTTS: '%s' never reached 'playing' state, using estimated delay %.1f s",
+                entity_id, timeout,
+            )
+            remaining = max(0.0, timeout - elapsed)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+            return
+
+        # Phase 2: poll until state leaves 'playing' or hard timeout
+        while elapsed < hard_limit:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state != "playing":
+                _LOGGER.debug(
+                    "UltraTTS: '%s' finished playing after %.1f s", entity_id, elapsed
+                )
+                return
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+        _LOGGER.warning(
+            "UltraTTS: '%s' still playing after %.1f s timeout, restoring volume anyway",
+            entity_id, hard_limit,
+        )
+
     def _is_heos_speaker(self, entity_id: str) -> bool:
         """Return True if this entity is provided by the HEOS integration.
 
