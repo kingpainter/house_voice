@@ -71,24 +71,20 @@ class UltraTTS:
 
         # Read original volumes for restore
         original_volumes = await self._get_volumes(speakers)
+        _LOGGER.warning("UltraTTS: original_volumes=%s", original_volumes)
 
-        # Determine per-speaker TTS volume:
-        # idle (original <= threshold) → set to configured volume directly
-        # music playing (original > threshold) → duck to volume * duck_factor
+        # Determine per-speaker TTS volume
         duck_factor = _DUCK_FACTOR.get(priority, _DUCK_FACTOR["normal"])
         tts_volumes = {
             sp: volume if original_volumes[sp] <= _IDLE_VOLUME_THRESHOLD else volume * duck_factor
             for sp in speakers
         }
+        _LOGGER.warning("UltraTTS: tts_volumes=%s duck_factor=%s", tts_volumes, duck_factor)
 
         # Detect platform for platform-specific behaviour.
-        # For MA speakers, find the underlying HEOS entity for queue management.
         heos_like_speakers = [sp for sp in speakers if self._needs_queue_clear(sp)]
         is_heos_like = bool(heos_like_speakers)
-        _LOGGER.warning(
-            "UltraTTS: platform check – speakers=%s heos_like=%s",
-            speakers, heos_like_speakers,
-        )
+        _LOGGER.warning("UltraTTS: heos_like_speakers=%s", heos_like_speakers)
 
         # Build map: MA entity → HEOS sibling (for clear_playlist + volume)
         # If a speaker has no sibling, it clears its own queue.
