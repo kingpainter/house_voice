@@ -73,13 +73,22 @@ class UltraTTS:
         original_volumes = await self._get_volumes(speakers)
         _LOGGER.warning("UltraTTS: original_volumes=%s", original_volumes)
 
-        # Determine per-speaker TTS volume
+        # Determine per-speaker TTS volume:
+        # Always speak at the configured volume.
+        # Only duck if music is actively playing (original > threshold AND state is 'playing').
         duck_factor = _DUCK_FACTOR.get(priority, _DUCK_FACTOR["normal"])
-        tts_volumes = {
-            sp: volume if original_volumes[sp] <= _IDLE_VOLUME_THRESHOLD else volume * duck_factor
-            for sp in speakers
-        }
-        _LOGGER.warning("UltraTTS: tts_volumes=%s duck_factor=%s", tts_volumes, duck_factor)
+        tts_volumes = {}
+        for sp in speakers:
+            state = self.hass.states.get(sp)
+            is_playing = state and state.state == "playing"
+            orig = original_volumes[sp]
+            if is_playing and orig > _IDLE_VOLUME_THRESHOLD:
+                # Music is actively playing – duck it
+                tts_volumes[sp] = volume * duck_factor
+            else:
+                # Idle or low volume – set directly to configured volume
+                tts_volumes[sp] = volume
+        _LOGGER.warning("UltraTTS: tts_volumes=%s (original=%s)", tts_volumes, original_volumes)
 
         # Detect platform for platform-specific behaviour.
         heos_like_speakers = [sp for sp in speakers if self._needs_queue_clear(sp)]
@@ -180,49 +189,61 @@ class UltraTTS:
                 _LOGGER.warning("UltraTTS: volume_set failed for '%s': %s", entity_id, err)
 
     def _find_heos_sibling(self, entity_id: str) -> str | None:
-        """Find the direct HEOS entity for a Music Assistant speaker."""
+        """Find the direct HEOS entity for a Music Assistant speaker.
+
+        Tries two strategies:
+        1. Same device_id (works if MA and HEOS share a device)
+        2. Match on MA unique_id == HEOS unique_id (Music Assistant uses
+           the HEOS player_id as unique_id)
+        """
         try:
             registry = er.async_get(self.hass)
             entry = registry.async_get(entity_id)
             if entry is None:
-                _LOGGER.warning("UltraTTS: '%s' not found in entity registry", entity_id)
                 return None
-            if entry.device_id is None:
-                _LOGGER.warning("UltraTTS: '%s' has no device_id", entity_id)
-                return None
-            siblings = registry.entities.get_entries_for_device_id(entry.device_id)
+
+            # Strategy 1: same device_id
+            if entry.device_id:
+                for sibling in registry.entities.get_entries_for_device_id(entry.device_id):
+                    if sibling.platform == "heos" and sibling.domain == "media_player":
+                        _LOGGER.warning("UltraTTS: HEOS sibling (device) '%s' → '%s'", entity_id, sibling.entity_id)
+                        return sibling.entity_id
+
+            # Strategy 2: match unique_id across all HEOS media_player entities
+            # MA uses the HEOS player_id as unique_id (e.g. '155202784')
+            ma_uid = entry.unique_id
+            for e in registry.entities.values():
+                if e.platform == "heos" and e.domain == "media_player" and e.unique_id == ma_uid:
+                    _LOGGER.warning("UltraTTS: HEOS sibling (uid) '%s' → '%s'", entity_id, e.entity_id)
+                    return e.entity_id
+
             _LOGGER.warning(
-                "UltraTTS: device_id=%s siblings=%s",
-                entry.device_id,
-                [(s.entity_id, s.platform) for s in siblings],
+                "UltraTTS: no HEOS sibling found for '%s' (uid=%s) – will clear queue on MA entity",
+                entity_id, ma_uid,
             )
-            for sibling in siblings:
-                if sibling.platform == "heos" and sibling.domain == "media_player":
-                    _LOGGER.warning(
-                        "UltraTTS: HEOS sibling for '%s' is '%s'",
-                        entity_id, sibling.entity_id,
-                    )
-                    return sibling.entity_id
-            _LOGGER.warning("UltraTTS: no HEOS sibling found for '%s'", entity_id)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("UltraTTS: sibling lookup failed for '%s': %s", entity_id, err)
         return None
 
     def _needs_queue_clear(self, entity_id: str) -> bool:
         """Return True for platforms that accumulate TTS in an internal queue."""
+        # Check state attributes for app_id as fallback –
+        # more reliable than entity registry platform lookup.
+        state = self.hass.states.get(entity_id)
+        if state:
+            app_id = state.attributes.get("app_id", "")
+            if app_id == "music_assistant":
+                _LOGGER.warning("UltraTTS: '%s' is Music Assistant (app_id)", entity_id)
+                return True
+        # Fallback: entity registry platform check
         try:
-            from homeassistant.helpers import entity_registry as er2
-            registry = er2.async_get(self.hass)
+            registry = er.async_get(self.hass)
             entry = registry.async_get(entity_id)
-            _LOGGER.warning(
-                "UltraTTS: _needs_queue_clear '%s' entry=%s platform=%s",
-                entity_id,
-                entry,
-                entry.platform if entry else None,
-            )
+            platform = entry.platform if entry else "unknown"
+            _LOGGER.warning("UltraTTS: '%s' platform='%s'", entity_id, platform)
             return entry is not None and entry.platform in ("heos", "music_assistant", "mass")
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("UltraTTS: _needs_queue_clear EXCEPTION for '%s': %s", entity_id, err)
+            _LOGGER.warning("UltraTTS: _needs_queue_clear failed '%s': %s", entity_id, err)
             return False
 
     def _is_heos_speaker(self, entity_id: str) -> bool:
