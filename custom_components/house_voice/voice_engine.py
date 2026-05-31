@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
@@ -156,7 +156,7 @@ class VoiceEngine:
         speakers       = event.get("speakers", [])
         volume: float  = event.get("volume", DEFAULT_VOLUME)
         priority: str  = event.get("priority", DEFAULT_PRIORITY)
-        condition: str = event.get("condition", "")
+        conditions: list[str] = event.get("conditions", [])
 
         if not speakers:
             raise ServiceValidationError(
@@ -198,9 +198,9 @@ class VoiceEngine:
             self._log_history(event_id, message, "blocked_quiet_hours")
             return
 
-        # Conditional playback – evaluate Jinja2 condition if present
-        if condition and not self._eval_condition(condition, event_id):
-            _LOGGER.info("House Voice: Condition false, skipping '%s'", event_id)
+        # Condition library – evaluate each condition ID with AND logic
+        if conditions and not self._eval_conditions(conditions, event_id):
+            _LOGGER.info("House Voice: Condition(s) not met, skipping '%s'", event_id)
             self._log_history(event_id, message, "blocked_condition")
             return
 
@@ -297,17 +297,49 @@ class VoiceEngine:
             )
             return message
 
-    def _eval_condition(self, condition: str, event_id: str) -> bool:
-        """Evaluate a Jinja2 condition expression. Returns True on error (fail-open)."""
-        try:
-            result = Template(condition, self.hass).async_render(parse_result=True)
-            return bool(result)
-        except TemplateError as err:
+    def _eval_conditions(self, condition_ids: list[str], event_id: str) -> bool:
+        """Evaluate a list of condition IDs with AND logic.
+
+        Each condition checks whether a tracked entity matches its expected state.
+        Returns True (allow playback) if ALL conditions are met.
+        Returns True if any condition_id is not found in the library (fail-open).
+        """
+        conditions_storage = self.hass.data.get(DOMAIN, {}).get("conditions")
+        if not conditions_storage:
             _LOGGER.warning(
-                "House Voice: Condition eval failed for '%s', defaulting to True. Error: %s",
-                event_id, err,
+                "House Voice: Conditions storage not available for '%s', defaulting to True",
+                event_id,
             )
             return True
+
+        for cid in condition_ids:
+            cond = conditions_storage.get_condition(cid)
+            if cond is None:
+                _LOGGER.warning(
+                    "House Voice: Condition '%s' not found in library for event '%s', skipping check",
+                    cid, event_id,
+                )
+                continue  # fail-open: unknown condition does not block
+
+            entity_id     = cond.get("entity_id", "")
+            expected_state = cond.get("state", "on")
+
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                _LOGGER.warning(
+                    "House Voice: Entity '%s' not found for condition '%s', skipping check",
+                    entity_id, cid,
+                )
+                continue  # fail-open: unavailable entity does not block
+
+            if state.state != expected_state:
+                _LOGGER.info(
+                    "House Voice: Condition '%s' not met – '%s' is '%s', expected '%s'",
+                    cid, entity_id, state.state, expected_state,
+                )
+                return False  # AND logic: one failed condition blocks the event
+
+        return True
 
     @staticmethod
     def _build_speaker_str(speakers: list[str]) -> str:

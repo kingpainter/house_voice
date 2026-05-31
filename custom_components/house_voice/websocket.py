@@ -1,8 +1,9 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
-#              test_event, get_groups, save_group, delete_group, get_history.
+#              test_event, get_groups, save_group, delete_group, get_history,
+#              get_conditions, save_condition, delete_condition.
 
 from __future__ import annotations
 
@@ -29,7 +30,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save_group)
     websocket_api.async_register_command(hass, ws_delete_group)
     websocket_api.async_register_command(hass, ws_get_history)
-    _LOGGER.info("House Voice WebSocket API registered (9 commands)")
+    websocket_api.async_register_command(hass, ws_get_conditions)
+    websocket_api.async_register_command(hass, ws_save_condition)
+    websocket_api.async_register_command(hass, ws_delete_condition)
+    _LOGGER.info("House Voice WebSocket API registered (12 commands)")
 
 
 def _get_storage(hass: HomeAssistant):
@@ -40,6 +44,11 @@ def _get_storage(hass: HomeAssistant):
 def _get_groups(hass: HomeAssistant):
     """Return groups instance or None."""
     return hass.data.get(DOMAIN, {}).get("groups")
+
+
+def _get_conditions(hass: HomeAssistant):
+    """Return conditions instance or None."""
+    return hass.data.get(DOMAIN, {}).get("conditions")
 
 
 def _get_engine(hass: HomeAssistant):
@@ -92,7 +101,7 @@ def ws_get_media_players(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("speakers"):                      vol.All(list, vol.Length(min=1)),
     vol.Optional("priority",  default="normal"):   vol.In(PRIORITIES),
     vol.Optional("volume",    default=0.35):       vol.All(float, vol.Range(min=0.05, max=1.0)),
-    vol.Optional("condition", default=""):         str,
+    vol.Optional("conditions", default=[]):        list,
 })
 @websocket_api.async_response
 async def ws_save_event(hass: HomeAssistant, connection, msg) -> None:
@@ -114,11 +123,11 @@ async def ws_save_event(hass: HomeAssistant, connection, msg) -> None:
 
     try:
         event_data = {
-            "message":   message,
-            "speakers":  msg["speakers"],
-            "priority":  msg["priority"],
-            "volume":    round(float(msg["volume"]), 2),
-            "condition": msg.get("condition", "").strip(),
+            "message":    message,
+            "speakers":   msg["speakers"],
+            "priority":   msg["priority"],
+            "volume":     round(float(msg["volume"]), 2),
+            "conditions": [c for c in msg.get("conditions", []) if isinstance(c, str)],
         }
         await storage.add_event(event_id, event_data)
         _LOGGER.info("House Voice: saved event '%s'", event_id)
@@ -278,4 +287,93 @@ def ws_get_history(hass: HomeAssistant, connection, msg) -> None:
     try:
         connection.send_result(msg["id"], {"history": engine.get_history()})
     except Exception as err:
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── Get all conditions ─────────────────────────────────────────────────────────
+
+@websocket_api.websocket_command({"type": f"{DOMAIN}/get_conditions"})
+@callback
+def ws_get_conditions(hass: HomeAssistant, connection, msg) -> None:
+    """Return all stored conditions from the condition library."""
+    conditions = _get_conditions(hass)
+    if not conditions:
+        connection.send_error(msg["id"], "not_ready", "House Voice conditions not ready")
+        return
+    try:
+        connection.send_result(msg["id"], {"conditions": conditions.data})
+    except Exception as err:
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── Save (add or update) a condition ──────────────────────────────────────────
+
+@websocket_api.websocket_command({
+    "type":                          f"{DOMAIN}/save_condition",
+    vol.Required("condition_id"):    str,
+    vol.Required("label"):           str,
+    vol.Required("entity_id"):       str,
+    vol.Optional("state", default="on"): str,
+})
+@websocket_api.async_response
+async def ws_save_condition(hass: HomeAssistant, connection, msg) -> None:
+    """Save (create or update) a condition in the condition library."""
+    conditions = _get_conditions(hass)
+    if not conditions:
+        connection.send_error(msg["id"], "not_ready", "House Voice conditions not ready")
+        return
+
+    condition_id = msg["condition_id"].strip()
+    if not condition_id:
+        connection.send_error(msg["id"], "invalid_input", "condition_id cannot be empty")
+        return
+
+    label = msg["label"].strip()
+    if not label:
+        connection.send_error(msg["id"], "invalid_input", "label cannot be empty")
+        return
+
+    entity_id = msg["entity_id"].strip()
+    if not entity_id:
+        connection.send_error(msg["id"], "invalid_input", "entity_id cannot be empty")
+        return
+
+    try:
+        await conditions.add_condition(condition_id, {
+            "label":     label,
+            "entity_id": entity_id,
+            "state":     msg.get("state", "on").strip(),
+        })
+        _LOGGER.info("House Voice: saved condition '%s'", condition_id)
+        connection.send_result(msg["id"], {"success": True, "condition_id": condition_id})
+    except Exception as err:
+        _LOGGER.error("House Voice: error saving condition: %s", err)
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── Delete a condition ─────────────────────────────────────────────────────────
+
+@websocket_api.websocket_command({
+    "type":                          f"{DOMAIN}/delete_condition",
+    vol.Required("condition_id"):    str,
+})
+@websocket_api.async_response
+async def ws_delete_condition(hass: HomeAssistant, connection, msg) -> None:
+    """Delete a condition from the condition library."""
+    conditions = _get_conditions(hass)
+    if not conditions:
+        connection.send_error(msg["id"], "not_ready", "House Voice conditions not ready")
+        return
+
+    condition_id = msg["condition_id"].strip()
+    if condition_id not in conditions.data:
+        connection.send_error(msg["id"], "not_found", f"Condition '{condition_id}' not found")
+        return
+
+    try:
+        await conditions.delete_condition(condition_id)
+        _LOGGER.info("House Voice: deleted condition '%s'", condition_id)
+        connection.send_result(msg["id"], {"success": True})
+    except Exception as err:
+        _LOGGER.error("House Voice: error deleting condition: %s", err)
         connection.send_error(msg["id"], "unknown_error", str(err))

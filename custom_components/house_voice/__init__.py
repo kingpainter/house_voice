@@ -26,7 +26,7 @@ from .const import (
 )
 from .groups import HouseVoiceGroups
 from .panel import async_register_panel, async_unregister_panel
-from .storage import HouseVoiceStorage
+from .storage import HouseVoiceConditions, HouseVoiceStorage
 from .voice_engine import VoiceEngine
 from .websocket import async_register_websocket_commands
 
@@ -39,12 +39,14 @@ PLATFORMS = [Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up House Voice Manager from a config entry."""
 
-    storage = HouseVoiceStorage(hass)
-    groups  = HouseVoiceGroups(hass)
+    storage     = HouseVoiceStorage(hass)
+    groups      = HouseVoiceGroups(hass)
+    conditions  = HouseVoiceConditions(hass)
 
     try:
         await storage.async_load()
         await groups.async_load()
+        await conditions.async_load()
     except Exception as err:
         raise ConfigEntryNotReady(
             f"House Voice: failed to load storage: {err}"
@@ -57,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "storage":           storage,
         "groups":            groups,
+        "conditions":        conditions,
         "engine":            engine,
         "sensor":            None,
         "_panel_registered": False,
@@ -94,11 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         event_id = call.data["event"]
         try:
             await storage.add_event(event_id, {
-                "message":   call.data["message"],
-                "speakers":  call.data["speakers"],
-                "priority":  call.data.get("priority", DEFAULT_PRIORITY),
-                "volume":    call.data.get("volume", DEFAULT_VOLUME),
-                "condition": call.data.get("condition", ""),
+                "message":    call.data["message"],
+                "speakers":   call.data["speakers"],
+                "priority":   call.data.get("priority", DEFAULT_PRIORITY),
+                "volume":     call.data.get("volume", DEFAULT_VOLUME),
+                "conditions": call.data.get("conditions", []),
             })
             _LOGGER.info("House Voice: event '%s' saved via service", event_id)
         except Exception as err:
@@ -145,7 +148,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Required("speakers"): vol.All(cv.ensure_list, [cv.string]),
             vol.Optional("priority",  default=DEFAULT_PRIORITY): vol.In(list(PRIORITIES)),
             vol.Optional("volume",    default=DEFAULT_VOLUME):   vol.All(vol.Coerce(float), vol.Range(min=0.05, max=1.0)),
-            vol.Optional("condition", default=""):               cv.string,
+            vol.Optional("conditions", default=[]):              vol.All(cv.ensure_list, [cv.string]),
         })
     )
     hass.services.async_register(
@@ -163,7 +166,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Register sidebar panel ─────────────────────────────────────────────
     await async_register_panel(hass)
 
-    _LOGGER.info("House Voice Manager v%s setup complete", VERSION)
+    _LOGGER.info("House Voice Manager v%s setup complete (conditions library loaded)", VERSION)
     return True
 
 

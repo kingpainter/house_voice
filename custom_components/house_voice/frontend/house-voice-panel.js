@@ -1,5 +1,5 @@
 // File: house-voice-panel.js
-// Version: 2.2.0
+// Version: 3.2.0
 // Description: House Voice Manager sidebar panel.
 //              Tabs: Events | Groups | History
 //              Design: Indeklima Designer – teal #14b8a6 / emerald #34d399
@@ -8,20 +8,23 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._hass         = null;
-    this._events       = {};
-    this._groups       = {};
-    this._players      = [];
-    this._history      = [];
-    this._tab          = "events";       // "events" | "groups" | "history"
-    this._editingId    = null;
-    this._editingGroup = null;
-    this._showForm     = false;
+    this._hass          = null;
+    this._events        = {};
+    this._groups        = {};
+    this._conditions    = {};      // { id: { label, entity_id, state } }
+    this._players       = [];
+    this._history       = [];
+    this._tab           = "events";       // "events" | "groups" | "history"
+    this._editingId     = null;
+    this._editingGroup  = null;
+    this._editingCond   = null;    // condition_id being edited
+    this._showForm      = false;
     this._showGroupForm = false;
-    this._saving       = false;
-    this._notification = null;
-    this._notifTimer   = null;
-    this._searchQuery  = "";
+    this._showCondForm  = false;   // condition library flyout
+    this._saving        = false;
+    this._notification  = null;
+    this._notifTimer    = null;
+    this._searchQuery   = "";
   }
 
   set hass(h) {
@@ -38,6 +41,7 @@ class HouseVoicePanel extends HTMLElement {
     await Promise.all([
       this._loadEvents(),
       this._loadGroups(),
+      this._loadConditions(),
       this._loadPlayers(),
       this._loadHistory(),
     ]);
@@ -56,6 +60,13 @@ class HouseVoicePanel extends HTMLElement {
       const res = await this._hass.callWS({ type: "house_voice/get_groups" });
       this._groups = res.groups || {};
     } catch (e) { console.error("House Voice: load groups", e); this._groups = {}; }
+  }
+
+  async _loadConditions() {
+    try {
+      const res = await this._hass.callWS({ type: "house_voice/get_conditions" });
+      this._conditions = res.conditions || {};
+    } catch (e) { console.error("House Voice: load conditions", e); this._conditions = {}; }
   }
 
   async _loadPlayers() {
@@ -118,8 +129,9 @@ class HouseVoicePanel extends HTMLElement {
     const message   = root.querySelector(".f-message")?.value?.trim();
     const priority  = root.querySelector(".f-priority")?.value;
     const volume    = parseFloat(root.querySelector(".f-volume")?.value || "0.35");
-    const condition = root.querySelector(".f-condition")?.value?.trim() || "";
     const speakers  = [...root.querySelectorAll(".f-speaker:checked")].map(el => el.value);
+
+    const conditions = [...root.querySelectorAll(".f-condition-cb:checked")].map(el => el.value);
 
     if (!eventId)         return this._notify("Event ID mangler.", "error");
     if (!message)         return this._notify("Besked mangler.", "error");
@@ -129,7 +141,7 @@ class HouseVoicePanel extends HTMLElement {
     try {
       await this._hass.callWS({
         type: "house_voice/save_event",
-        event_id: eventId, message, speakers, priority, volume, condition,
+        event_id: eventId, message, speakers, priority, volume, conditions,
       });
       await this._loadEvents();
       this._closeForm();
@@ -152,6 +164,47 @@ class HouseVoicePanel extends HTMLElement {
     try {
       await this._hass.callWS({ type: "house_voice/test_event", event_id: id });
       this._notify(`▶ '${id}' afspilles...`);
+    } catch (e) { this._notify(`Fejl: ${e.message || e}`, "error"); }
+  }
+
+  // ── Condition actions ─────────────────────────────────────────────────────
+
+  _openAddCond()    { this._editingCond = null; this._showCondForm = true; this._render(); }
+  _openEditCond(id) { this._editingCond = id;   this._showCondForm = true; this._render(); }
+  _closeCondForm()  { this._showCondForm = false; this._editingCond = null; this._render(); }
+
+  async _saveCond() {
+    const root = this.shadowRoot;
+    const condId   = root.querySelector(".fc-cond-id")?.value?.trim();
+    const label    = root.querySelector(".fc-label")?.value?.trim();
+    const entityId = root.querySelector(".fc-entity-id")?.value?.trim();
+    const state    = root.querySelector(".fc-state")?.value?.trim() || "on";
+
+    if (!condId)   return this._notify("Betingelse ID mangler.", "error");
+    if (!label)    return this._notify("Navn mangler.", "error");
+    if (!entityId) return this._notify("Entity ID mangler.", "error");
+
+    this._saving = true; this._render();
+    try {
+      await this._hass.callWS({
+        type: "house_voice/save_condition",
+        condition_id: condId, label, entity_id: entityId, state,
+      });
+      await this._loadConditions();
+      this._closeCondForm();
+      this._notify(`Betingelse '${label}' gemt ✓`);
+    } catch (e) {
+      this._notify(`Fejl: ${e.message || e}`, "error");
+    } finally { this._saving = false; this._render(); }
+  }
+
+  async _deleteCond(id) {
+    const label = this._conditions[id]?.label || id;
+    if (!confirm(`Slet betingelse '${label}'?`)) return;
+    try {
+      await this._hass.callWS({ type: "house_voice/delete_condition", condition_id: id });
+      await this._loadConditions();
+      this._notify(`Betingelse '${label}' slettet.`);
     } catch (e) { this._notify(`Fejl: ${e.message || e}`, "error"); }
   }
 
@@ -240,7 +293,7 @@ class HouseVoicePanel extends HTMLElement {
             event_id: id, message: ev.message,
             speakers: Array.isArray(ev.speakers) ? ev.speakers : [ev.speakers],
             priority: ev.priority || "normal", volume: ev.volume || 0.35,
-            condition: ev.condition || "",
+            conditions: ev.conditions || [],
           });
           count++;
         }
@@ -331,8 +384,8 @@ class HouseVoicePanel extends HTMLElement {
         s.startsWith("group:") ? `🔈 ${s.replace("group:", "")}` : s
       ).join(", ");
       const priColor  = this._priorityColor(ev.priority);
-      const condBadge = ev.condition
-        ? `<span class="badge badge-cond" title="${this._esc(ev.condition)}">⚡ Betingelse</span>`
+      const condBadge = (ev.conditions && ev.conditions.length)
+        ? `<span class="badge badge-cond" title="${ev.conditions.map(c => this._conditions[c]?.label || c).join(' ∧ ')}">⚡ ${ev.conditions.length} betingelse${ev.conditions.length > 1 ? 'r' : ''}</span>`
         : "";
       return `
         <div class="event-card">
@@ -445,6 +498,111 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── Speaker checkboxes (groups form) ──────────────────────────────────────
 
+
+  // ── Condition checkboxes (event form) ─────────────────────────────────────
+
+  _conditionCheckboxesHTML(selectedIds) {
+    const ids = Object.keys(this._conditions);
+    if (!ids.length)
+      return `<div class="no-players">Ingen betingelser i biblioteket endnu — tilføj via 'Betingelsesbibliotek' herunder.</div>`;
+    return `<div class="cond-list">${ids.map(id => {
+      const c = this._conditions[id];
+      const checked = selectedIds.includes(id) ? "checked" : "";
+      return `
+        <label class="speaker-label">
+          <input type="checkbox" class="f-condition-cb" value="${this._esc(id)}" ${checked}>
+          <span class="speaker-name">${this._esc(c.label)}</span>
+          <span class="speaker-entity">${this._esc(c.entity_id)} = ${this._esc(c.state)}</span>
+        </label>`;
+    }).join("")}</div>`;
+  }
+
+  // ── Condition library section (events tab) ─────────────────────────────────
+
+  _condLibHTML() {
+    const ids = Object.keys(this._conditions);
+    return `
+      <div class="cond-lib-section">
+        <div class="cond-lib-header">
+          <span class="section-title">⚡ Betingelsesbibliotek</span>
+          <button class="btn btn-add-sm" id="btn-add-cond">+ Tilføj betingelse</button>
+        </div>
+        ${!ids.length
+          ? `<div class="cond-lib-empty">Ingen betingelser endnu — klik + for at tilføje en.</div>`
+          : `<div class="cond-lib-list">${ids.map(id => {
+              const c = this._conditions[id];
+              return `
+                <div class="cond-row">
+                  <div class="cond-row-info">
+                    <span class="cond-label">${this._esc(c.label)}</span>
+                    <span class="cond-meta">${this._esc(c.entity_id)} = <code class="cond-code">${this._esc(c.state)}</code></span>
+                  </div>
+                  <div class="cond-row-actions">
+                    <button class="btn btn-edit btn-edit-cond" data-id="${this._esc(id)}">✎</button>
+                    <button class="btn btn-delete btn-delete-cond" data-id="${this._esc(id)}">×</button>
+                  </div>
+                </div>`;
+            }).join("")}</div>`
+        }
+      </div>`;
+  }
+
+  // ── Condition form overlay ─────────────────────────────────────────────────
+
+  _condFormHTML() {
+    const isEdit = this._editingCond !== null;
+    const c      = isEdit ? (this._conditions[this._editingCond] || {}) : {};
+    const condId = isEdit ? this._editingCond : "";
+    const label  = c.label     || "";
+    const eid    = c.entity_id || "";
+    const state  = c.state     || "on";
+    const title  = isEdit ? `Rediger: ${condId}` : "Ny betingelse";
+    return `
+      <div class="form-overlay">
+        <div class="form-card">
+          <div class="form-header">
+            <span class="form-title">${this._esc(title)}</span>
+            <button class="close-btn" id="close-cond-form">✕</button>
+          </div>
+          <div class="form-body">
+            <div class="field">
+              <label class="field-label">Betingelse ID <span class="req">*</span></label>
+              <input class="fc-cond-id input" type="text" value="${this._esc(condId)}"
+                placeholder="f.eks. nogen_hjemme" ${isEdit ? "readonly" : ""}>
+              <span class="hint">Bruges internt til at koble betingelsen på events.</span>
+            </div>
+            <div class="field">
+              <label class="field-label">Navn <span class="req">*</span></label>
+              <input class="fc-label input" type="text" value="${this._esc(label)}"
+                placeholder="f.eks. Nogen er hjemme">
+            </div>
+            <div class="field">
+              <label class="field-label">Entity ID <span class="req">*</span></label>
+              <input class="fc-entity-id input" type="text" value="${this._esc(eid)}"
+                placeholder="f.eks. binary_sensor.nogen_hjemme">
+              <span class="hint">Entity der skal være i den forventede tilstand.</span>
+            </div>
+            <div class="field">
+              <label class="field-label">Forventet tilstand</label>
+              <select class="fc-state input">
+                <option value="on"       ${state === "on"       ? "selected" : ""}>on</option>
+                <option value="off"      ${state === "off"      ? "selected" : ""}>off</option>
+                <option value="home"     ${state === "home"     ? "selected" : ""}>home</option>
+                <option value="not_home" ${state === "not_home" ? "selected" : ""}>not_home</option>
+              </select>
+              <span class="hint">Betingelsen er opfyldt når entityen har denne værdi.</span>
+            </div>
+          </div>
+          <div class="form-footer">
+            <button class="btn btn-cancel" id="cancel-cond-form">Annuller</button>
+            <button class="btn btn-save" id="save-cond-form" ${this._saving ? "disabled" : ""}>
+              ${this._saving ? "Gemmer..." : "💾 Gem"}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   _groupSpeakerCheckboxesHTML(selected) {
     if (!this._players.length)
       return `<div class="no-players">Ingen media_player entities fundet i Home Assistant.</div>`;
@@ -468,7 +626,7 @@ class HouseVoicePanel extends HTMLElement {
     const msg     = ev.message   || "";
     const pri     = ev.priority  || "normal";
     const vol     = ev.volume    !== undefined ? ev.volume : 0.35;
-    const cond    = ev.condition || "";
+    const cond    = ev.conditions || [];
     const selSpk  = ev.speakers  || [];
     const title   = isEdit ? `Rediger: ${eventId}` : "Nyt voice event";
 
@@ -492,10 +650,9 @@ class HouseVoicePanel extends HTMLElement {
                 placeholder="f.eks. Opvaskeren er færdig">
             </div>
             <div class="field">
-              <label class="field-label">Betingelse <span class="hint-inline">(Jinja2 – valgfrit)</span></label>
-              <input class="f-condition input" type="text" value="${this._esc(cond)}"
-                placeholder="{{ is_state('person.flemming', 'home') }}">
-              <span class="hint">Eventet afspilles kun hvis betingelsen er sand. Lad stå tomt for altid at afspille.</span>
+              <label class="field-label">Betingelser <span class="hint-inline">(valgfrit – alle skal være opfyldt)</span></label>
+              ${this._conditionCheckboxesHTML(cond)}
+              <span class="hint">Eventet afspilles kun når ALLE valgte betingelser er sande. Lad stå tomt for altid at afspille.</span>
             </div>
             <div class="field">
               <label class="field-label">Prioritet</label>
@@ -626,6 +783,7 @@ class HouseVoicePanel extends HTMLElement {
 
           <div class="content-area">
             ${isEvents  ? this._eventListHTML() : ""}
+            ${isEvents  ? this._condLibHTML()   : ""}
             ${isGroups  ? this._groupListHTML() : ""}
             ${isHistory ? this._historyHTML()   : ""}
           </div>
@@ -633,6 +791,7 @@ class HouseVoicePanel extends HTMLElement {
 
         ${this._showForm      ? this._formHTML()      : ""}
         ${this._showGroupForm ? this._groupFormHTML() : ""}
+        ${this._showCondForm  ? this._condFormHTML()  : ""}
 
       </div>`;
 
@@ -670,6 +829,16 @@ class HouseVoicePanel extends HTMLElement {
     root.getElementById("close-form")?.addEventListener("click",  () => this._closeForm());
     root.getElementById("cancel-form")?.addEventListener("click", () => this._closeForm());
     root.getElementById("save-form")?.addEventListener("click",   () => this._save());
+
+    root.getElementById("close-cond-form")?.addEventListener("click",  () => this._closeCondForm());
+    root.getElementById("cancel-cond-form")?.addEventListener("click", () => this._closeCondForm());
+    root.getElementById("save-cond-form")?.addEventListener("click",   () => this._saveCond());
+
+    root.getElementById("btn-add-cond")?.addEventListener("click", () => this._openAddCond());
+    root.querySelectorAll(".btn-edit-cond").forEach(el =>
+      el.addEventListener("click", () => this._openEditCond(el.dataset.id)));
+    root.querySelectorAll(".btn-delete-cond").forEach(el =>
+      el.addEventListener("click", () => this._deleteCond(el.dataset.id)));
 
     root.getElementById("close-group-form")?.addEventListener("click",  () => this._closeGroupForm());
     root.getElementById("cancel-group-form")?.addEventListener("click", () => this._closeGroupForm());
@@ -862,6 +1031,49 @@ class HouseVoicePanel extends HTMLElement {
     .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
     input[readonly] { opacity: .5; cursor: default; }
     .f-volume { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 4px; }
+
+    /* ── Condition library ── */
+    .cond-lib-section {
+      margin-top: 20px;
+      border-top: 1px solid var(--div);
+      padding-top: 16px;
+    }
+    .cond-lib-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--sub);
+    }
+    .btn-add-sm {
+      padding: 5px 12px; border: none; border-radius: 7px;
+      font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+      cursor: pointer; background: rgba(20,184,166,0.12);
+      color: var(--accent); border: 1px solid rgba(20,184,166,0.25);
+      transition: opacity .15s;
+    }
+    .btn-add-sm:hover { opacity: .8; }
+    .cond-lib-empty { font-size: 13px; color: var(--sub); padding: 8px 0; }
+    .cond-lib-list { display: flex; flex-direction: column; gap: 6px; }
+    .cond-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg2); border-radius: 10px;
+      padding: 10px 14px; border: 1px solid var(--div);
+    }
+    .cond-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .cond-label { font-size: 13px; font-weight: 600; color: var(--text); }
+    .cond-meta  { font-size: 11px; color: var(--sub); font-family: 'DM Mono', monospace; }
+    .cond-code  {
+      background: rgba(20,184,166,0.12); color: var(--accent);
+      padding: 1px 5px; border-radius: 4px; font-size: 10px;
+    }
+    .cond-row-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px; }
+    .cond-list {
+      display: flex; flex-direction: column; gap: 4px;
+      border: 1px solid var(--div); border-radius: 10px;
+      padding: 8px 12px; background: var(--bg3);
+    }
 
     /* ── Speaker list ── */
     .speakers-list {
