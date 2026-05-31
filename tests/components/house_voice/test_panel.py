@@ -41,8 +41,7 @@ async def test_static_path_registered_once_per_session(hass_with_panel_data):
     from custom_components.house_voice import panel as panel_module
 
     with patch("custom_components.house_voice.panel.panel_custom.async_register_panel", new=AsyncMock()), \
-         patch.object(panel_module, "_HAS_STATIC_PATH_CONFIG", True), \
-         patch("homeassistant.components.http.StaticPathConfig", MagicMock(), create=True), \
+         patch.object(panel_module, "_HAS_STATIC_PATH_CONFIG", False), \
          patch("os.path.getmtime", return_value=1234567890.0):
 
         # First setup

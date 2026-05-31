@@ -205,7 +205,7 @@ async def test_ws_test_event_success(mock_hass, mock_engine):
     conn = _make_connection()
     await ws_test_event.__wrapped__(mock_hass, conn, _make_msg(event_id="ev1"))
 
-    mock_engine.say.assert_called_once_with("ev1")
+    mock_engine.say.assert_called_once_with("ev1", bypass_spam=True)
     conn.send_result.assert_called_once()
 
 
