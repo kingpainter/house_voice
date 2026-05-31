@@ -91,7 +91,7 @@ async def test_ws_save_event_success(mock_hass, mock_storage):
         priority="normal",
         volume=0.4,
     )
-    await ws_save_event(mock_hass, conn, msg)
+    await ws_save_event.__wrapped__(mock_hass, conn, msg)
 
     conn.send_result.assert_called_once()
     assert conn.send_result.call_args[0][1]["success"] is True
@@ -113,7 +113,7 @@ async def test_ws_save_event_empty_event_id(mock_hass, mock_storage):
         priority="normal",
         volume=0.35,
     )
-    await ws_save_event(mock_hass, conn, msg)
+    await ws_save_event.__wrapped__(mock_hass, conn, msg)
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "invalid_input"
@@ -134,7 +134,7 @@ async def test_ws_save_event_no_speakers(mock_hass, mock_storage):
         priority="normal",
         volume=0.35,
     )
-    await ws_save_event(mock_hass, conn, msg)
+    await ws_save_event.__wrapped__(mock_hass, conn, msg)
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "invalid_input"
@@ -155,7 +155,7 @@ async def test_ws_save_event_invalid_priority(mock_hass, mock_storage):
         priority="ultra",
         volume=0.35,
     )
-    await ws_save_event(mock_hass, conn, msg)
+    await ws_save_event.__wrapped__(mock_hass, conn, msg)
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "invalid_input"
@@ -172,7 +172,7 @@ async def test_ws_delete_event_success(mock_hass, mock_storage, sample_event):
     mock_hass.data[DOMAIN] = {"storage": mock_storage}
 
     conn = _make_connection()
-    await ws_delete_event(mock_hass, conn, _make_msg(event_id="ev1"))
+    await ws_delete_event.__wrapped__(mock_hass, conn, _make_msg(event_id="ev1"))
 
     conn.send_result.assert_called_once()
     assert "ev1" not in mock_storage.data
@@ -186,7 +186,7 @@ async def test_ws_delete_event_not_found(mock_hass, mock_storage):
     mock_hass.data[DOMAIN] = {"storage": mock_storage}
 
     conn = _make_connection()
-    await ws_delete_event(mock_hass, conn, _make_msg(event_id="unknown"))
+    await ws_delete_event.__wrapped__(mock_hass, conn, _make_msg(event_id="unknown"))
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "not_found"
@@ -203,7 +203,7 @@ async def test_ws_test_event_success(mock_hass, mock_engine):
     mock_hass.data[DOMAIN] = {"engine": mock_engine}
 
     conn = _make_connection()
-    await ws_test_event(mock_hass, conn, _make_msg(event_id="ev1"))
+    await ws_test_event.__wrapped__(mock_hass, conn, _make_msg(event_id="ev1"))
 
     mock_engine.say.assert_called_once_with("ev1")
     conn.send_result.assert_called_once()
@@ -217,7 +217,7 @@ async def test_ws_test_event_engine_not_ready(mock_hass):
     mock_hass.data[DOMAIN] = {"engine": None}
 
     conn = _make_connection()
-    await ws_test_event(mock_hass, conn, _make_msg(event_id="ev1"))
+    await ws_test_event.__wrapped__(mock_hass, conn, _make_msg(event_id="ev1"))
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "not_ready"
@@ -270,7 +270,7 @@ async def test_ws_save_group_success(mock_hass, mock_groups):
         name="Alle rum",
         speakers=["media_player.stue", "media_player.kokken"],
     )
-    await ws_save_group(mock_hass, conn, msg)
+    await ws_save_group.__wrapped__(mock_hass, conn, msg)
 
     conn.send_result.assert_called_once()
     assert conn.send_result.call_args[0][1]["success"] is True
@@ -286,7 +286,7 @@ async def test_ws_save_group_empty_id(mock_hass, mock_groups):
 
     conn = _make_connection()
     msg = _make_msg(group_id="  ", name="Test", speakers=["media_player.stue"])
-    await ws_save_group(mock_hass, conn, msg)
+    await ws_save_group.__wrapped__(mock_hass, conn, msg)
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "invalid_input"
@@ -303,7 +303,7 @@ async def test_ws_delete_group_success(mock_hass, mock_groups):
     mock_hass.data[DOMAIN] = {"groups": mock_groups}
 
     conn = _make_connection()
-    await ws_delete_group(mock_hass, conn, _make_msg(group_id="g1"))
+    await ws_delete_group.__wrapped__(mock_hass, conn, _make_msg(group_id="g1"))
 
     conn.send_result.assert_called_once()
     assert "g1" not in mock_groups.data
@@ -317,7 +317,7 @@ async def test_ws_delete_group_not_found(mock_hass, mock_groups):
     mock_hass.data[DOMAIN] = {"groups": mock_groups}
 
     conn = _make_connection()
-    await ws_delete_group(mock_hass, conn, _make_msg(group_id="unknown"))
+    await ws_delete_group.__wrapped__(mock_hass, conn, _make_msg(group_id="unknown"))
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "not_found"

@@ -30,21 +30,17 @@ async def test_say_calls_ultra_tts(mock_engine, mock_storage, sample_event):
     mock_storage.data["ev1"] = sample_event
     mock_engine.start()
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
 
-    mock_engine.hass.services.async_call.assert_called_once_with(
-        "script",
-        "ultra_tts",
-        {
-            "speaker":  "media_player.kokken",
-            "message":  "Opvaskeren er færdig",
-            "volume":   0.35,
-            "priority": "normal",
-        },
-        blocking=False,
-    )
+    mock_speak.assert_called_once()
+    call_kwargs = mock_speak.call_args[1]
+    assert call_kwargs["speaker"] == "media_player.kokken"
+    assert call_kwargs["message"] == "Opvaskeren er færdig"
+    assert call_kwargs["volume"] == 0.35
+    assert call_kwargs["priority"] == "normal"
     await mock_engine.stop()
 
 
@@ -61,7 +57,7 @@ async def test_say_no_speakers_raises(mock_engine, mock_storage):
     """say() raises ServiceValidationError when speakers list is empty."""
     from homeassistant.exceptions import ServiceValidationError
     mock_storage.data["ev1"] = {
-        "message": "Test", "speakers": [], "priority": "normal", "volume": 0.35, "condition": "",
+        "message": "Test", "speakers": [], "priority": "normal", "volume": 0.35, "conditions": [],
     }
     with pytest.raises(ServiceValidationError):
         await mock_engine.say("ev1")
@@ -75,14 +71,14 @@ async def test_bypass_spam_allows_immediate_repeat(mock_engine, mock_storage, sa
     mock_storage.data["ev1"] = sample_event
     mock_engine.start()
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
-        # Normally blocked by spam filter
         await mock_engine.say("ev1", bypass_spam=True)
         await _flush_queue(mock_engine)
 
-    assert mock_engine.hass.services.async_call.call_count == 2
+    assert mock_speak.call_count == 2
     await mock_engine.stop()
 
 
@@ -92,13 +88,14 @@ async def test_spam_filter_blocks_without_bypass(mock_engine, mock_storage, samp
     mock_storage.data["ev1"] = sample_event
     mock_engine.start()
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
         await mock_engine.say("ev1")  # blocked
         await _flush_queue(mock_engine)
 
-    assert mock_engine.hass.services.async_call.call_count == 1
+    assert mock_speak.call_count == 1
     await mock_engine.stop()
 
 
@@ -197,7 +194,8 @@ async def test_say_text_enqueues_and_plays(mock_engine):
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
-         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
+         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls, \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         mock_tpl = MagicMock()
         mock_tpl.async_render.return_value = "Hej verden"
         mock_tpl_cls.return_value = mock_tpl
@@ -210,11 +208,11 @@ async def test_say_text_enqueues_and_plays(mock_engine):
         )
         await _flush_queue(mock_engine)
 
-    mock_engine.hass.services.async_call.assert_called_once()
-    call_data = mock_engine.hass.services.async_call.call_args[0][2]
-    assert call_data["message"] == "Hej verden"
-    assert call_data["speaker"] == "media_player.stue"
-    assert call_data["volume"] == 0.5
+    mock_speak.assert_called_once()
+    call_kwargs = mock_speak.call_args[1]
+    assert call_kwargs["message"] == "Hej verden"
+    assert call_kwargs["speaker"] == "media_player.stue"
+    assert call_kwargs["volume"] == 0.5
     await mock_engine.stop()
 
 
@@ -239,7 +237,8 @@ async def test_say_text_critical_bypasses_quiet_hours(mock_engine):
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=True), \
-         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
+         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls, \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         mock_tpl = MagicMock()
         mock_tpl.async_render.return_value = "ALARM!"
         mock_tpl_cls.return_value = mock_tpl
@@ -251,7 +250,7 @@ async def test_say_text_critical_bypasses_quiet_hours(mock_engine):
         )
         await _flush_queue(mock_engine)
 
-    mock_engine.hass.services.async_call.assert_called_once()
+    mock_speak.assert_called_once()
     await mock_engine.stop()
 
 
@@ -279,12 +278,13 @@ async def test_say_resolves_group_reference(mock_engine, mock_storage, mock_grou
     }
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["group:alle_rum"],
-        "priority": "normal", "volume": 0.35, "condition": "",
+        "priority": "normal", "volume": 0.35, "conditions": [],
     }
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
-         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
+         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls, \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()) as mock_speak:
         mock_tpl = MagicMock()
         mock_tpl.async_render.return_value = "Test"
         mock_tpl_cls.return_value = mock_tpl
@@ -292,8 +292,8 @@ async def test_say_resolves_group_reference(mock_engine, mock_storage, mock_grou
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
 
-    call_data = mock_engine.hass.services.async_call.call_args[0][2]
-    assert call_data["speaker"] == "media_player.stue, media_player.kokken"
+    call_kwargs = mock_speak.call_args[1]
+    assert call_kwargs["speaker"] == "media_player.stue, media_player.kokken"
     await mock_engine.stop()
 
 
@@ -305,7 +305,8 @@ async def test_history_records_spoken(mock_engine, mock_storage, sample_event):
     mock_storage.data["ev1"] = sample_event
     mock_engine.start()
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()):
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
 
@@ -321,7 +322,8 @@ async def test_history_records_blocked_spam(mock_engine, mock_storage, sample_ev
     mock_storage.data["ev1"] = sample_event
     mock_engine.start()
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
+         patch("custom_components.house_voice.ultra_tts.UltraTTS.async_speak", new=AsyncMock()):
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
         await mock_engine.say("ev1")  # blocked by spam filter

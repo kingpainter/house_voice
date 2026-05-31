@@ -29,50 +29,43 @@ def mock_hass():
 @pytest.fixture
 def mock_storage(mock_hass):
     """Return a HouseVoiceStorage with mocked Store."""
-    with patch("custom_components.house_voice.storage.Store") as mock_store_cls:
-        mock_store = MagicMock()
-        mock_store.async_load = AsyncMock(return_value=None)
-        mock_store.async_save = AsyncMock()
-        mock_store_cls.return_value = mock_store
+    mock_store = MagicMock()
+    mock_store.async_load = AsyncMock(return_value=None)
+    mock_store.async_save = AsyncMock()
 
+    with patch("custom_components.house_voice.storage.Store", return_value=mock_store):
         storage = HouseVoiceStorage(mock_hass)
         storage.store = mock_store
-        # Ensure async methods are always awaitable, even after patch context exits
-        storage.async_save = AsyncMock()
-        return storage
+        yield storage
 
 
 @pytest.fixture
 def mock_groups(mock_hass):
     """Return a HouseVoiceGroups with mocked Store."""
-    with patch("custom_components.house_voice.groups.Store") as mock_store_cls:
-        mock_store = MagicMock()
-        mock_store.async_load = AsyncMock(return_value=None)
-        mock_store.async_save = AsyncMock()
-        mock_store_cls.return_value = mock_store
+    mock_store = MagicMock()
+    mock_store.async_load = AsyncMock(return_value=None)
+    mock_store.async_save = AsyncMock()
 
+    with patch("custom_components.house_voice.groups.Store", return_value=mock_store):
         groups = HouseVoiceGroups(mock_hass)
         groups.store = mock_store
         groups.data = {}
-        # Ensure async methods are always awaitable, even after patch context exits
-        groups.async_save = AsyncMock()
-        return groups
+        yield groups
 
 
 @pytest.fixture
 def mock_conditions(mock_hass):
     """Return a HouseVoiceConditions with mocked Store."""
     from custom_components.house_voice.storage import HouseVoiceConditions
-    with patch("custom_components.house_voice.storage.Store") as mock_store_cls:
-        mock_store = MagicMock()
-        mock_store.async_load = AsyncMock(return_value=None)
-        mock_store.async_save = AsyncMock()
-        mock_store_cls.return_value = mock_store
+    mock_store = MagicMock()
+    mock_store.async_load = AsyncMock(return_value=None)
+    mock_store.async_save = AsyncMock()
 
+    with patch("custom_components.house_voice.storage.Store", return_value=mock_store):
         conditions = HouseVoiceConditions(mock_hass)
         conditions.store = mock_store
         conditions.data = {}
-        return conditions
+        yield conditions
 
 
 @pytest.fixture
