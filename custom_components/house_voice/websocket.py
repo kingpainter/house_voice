@@ -121,12 +121,22 @@ async def ws_save_event(hass: HomeAssistant, connection, msg) -> None:
         connection.send_error(msg["id"], "invalid_input", "message cannot be empty")
         return
 
+    speakers = msg.get("speakers", [])
+    if not speakers:
+        connection.send_error(msg["id"], "invalid_input", "at least one speaker is required")
+        return
+
+    priority = msg.get("priority", "normal")
+    if priority not in PRIORITIES:
+        connection.send_error(msg["id"], "invalid_input", "priority must be info, normal or critical")
+        return
+
     try:
         event_data = {
             "message":    message,
-            "speakers":   msg["speakers"],
-            "priority":   msg["priority"],
-            "volume":     round(float(msg["volume"]), 2),
+            "speakers":   speakers,
+            "priority":   priority,
+            "volume":     round(float(msg.get("volume", 0.35)), 2),
             "conditions": [c for c in msg.get("conditions", []) if isinstance(c, str)],
         }
         await storage.add_event(event_id, event_data)

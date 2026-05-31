@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_VOLUME,
     DOMAIN,
 )
+from .ultra_tts import UltraTTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -390,7 +391,6 @@ class VoiceEngine:
         event_id: str,
     ) -> None:
         """Execute a single TTS call via the native UltraTTS engine."""
-        from .ultra_tts import UltraTTS
         try:
             tts = UltraTTS(self.hass)
             await tts.async_speak(

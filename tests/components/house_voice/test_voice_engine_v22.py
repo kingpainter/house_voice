@@ -120,7 +120,11 @@ async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_ha
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
-         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
+         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls, \
+         patch("custom_components.house_voice.voice_engine.UltraTTS") as mock_ultra_cls:
+        mock_ultra = MagicMock()
+        mock_ultra.async_speak = AsyncMock()
+        mock_ultra_cls.return_value = mock_ultra
         mock_tpl = MagicMock()
         mock_tpl.async_render.return_value = "Test"
         mock_tpl_cls.return_value = mock_tpl
@@ -128,7 +132,7 @@ async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_ha
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
 
-    mock_engine.hass.services.async_call.assert_called_once()
+    mock_ultra.async_speak.assert_called_once()
     await mock_engine.stop()
 
 
@@ -173,7 +177,11 @@ async def test_condition_error_defaults_to_true(mock_engine, mock_storage, mock_
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
-         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
+         patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls, \
+         patch("custom_components.house_voice.voice_engine.UltraTTS") as mock_ultra_cls:
+        mock_ultra = MagicMock()
+        mock_ultra.async_speak = AsyncMock()
+        mock_ultra_cls.return_value = mock_ultra
         mock_tpl = MagicMock()
         mock_tpl.async_render.return_value = "Test"
         mock_tpl_cls.return_value = mock_tpl
@@ -182,7 +190,7 @@ async def test_condition_error_defaults_to_true(mock_engine, mock_storage, mock_
         await _flush_queue(mock_engine)
 
     # Fail-open: unavailable entity skips check, event plays
-    mock_engine.hass.services.async_call.assert_called_once()
+    mock_ultra.async_speak.assert_called_once()
     await mock_engine.stop()
 
 
