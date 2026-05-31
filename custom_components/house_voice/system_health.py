@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: system_health.py
 # Description: System Health info for House Voice Manager
 
@@ -8,10 +8,10 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN, VERSION
 
 
-async def async_register(
+def async_register(
     hass: HomeAssistant, register: SystemHealthRegistration
 ) -> None:
-    """Register House Voice system health info."""
+    """Register House Voice system health info (synchronous – required by HA)."""
     register.async_register_info(system_health_info)
 
 

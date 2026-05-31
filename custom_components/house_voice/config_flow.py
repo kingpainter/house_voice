@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: config_flow.py
 # Description: Config Flow + Options Flow for House Voice Manager.
 #              Config flow: no fields – user just clicks Submit to install.
@@ -9,9 +9,14 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+
+try:
+    from homeassistant.config_entries import ConfigFlowResult  # HA >= 2024.4
+except ImportError:
+    ConfigFlowResult = FlowResult  # type: ignore[misc,assignment]
 
 from .const import (
     CONF_QUIET_END,

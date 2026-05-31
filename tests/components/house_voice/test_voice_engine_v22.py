@@ -105,18 +105,27 @@ async def test_spam_filter_blocks_without_bypass(mock_engine, mock_storage, samp
 # ── Conditions ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_condition_true_allows_playback(mock_engine, mock_storage):
-    """A truthy Jinja2 condition allows playback."""
+async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_hass):
+    """A condition that is met allows playback."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
-        "priority": "normal", "volume": 0.35, "condition": "{{ true }}",
+        "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
+    # Set up condition in library: entity is 'on'
+    cond_mock = mock_hass.data["house_voice"]["conditions"]
+    cond_mock.get_condition = MagicMock(return_value={
+        "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
+    })
+    state_mock = MagicMock()
+    state_mock.state = "on"
+    mock_hass.states.get = MagicMock(return_value=state_mock)
+
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
          patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
         mock_tpl = MagicMock()
-        mock_tpl.async_render.return_value = True
+        mock_tpl.async_render.return_value = "Test"
         mock_tpl_cls.return_value = mock_tpl
 
         await mock_engine.say("ev1")
@@ -127,15 +136,22 @@ async def test_condition_true_allows_playback(mock_engine, mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_condition_false_blocks_playback(mock_engine, mock_storage):
-    """A falsy Jinja2 condition blocks playback and logs to history."""
+async def test_condition_false_blocks_playback(mock_engine, mock_storage, mock_hass):
+    """A condition that is not met blocks playback and logs to history."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
-        "priority": "normal", "volume": 0.35, "condition": "{{ false }}",
+        "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
+    # Set up condition in library: entity is 'off' but expected 'on'
+    cond_mock = mock_hass.data["house_voice"]["conditions"]
+    cond_mock.get_condition = MagicMock(return_value={
+        "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
+    })
+    state_mock = MagicMock()
+    state_mock.state = "off"  # condition NOT met
+    mock_hass.states.get = MagicMock(return_value=state_mock)
 
-    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
-         patch.object(mock_engine, "_eval_condition", return_value=False):
+    with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
         await mock_engine.say("ev1")
 
     mock_engine.hass.services.async_call.assert_not_called()
@@ -144,26 +160,31 @@ async def test_condition_false_blocks_playback(mock_engine, mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_condition_error_defaults_to_true(mock_engine, mock_storage):
-    """A broken Jinja2 condition fails open (event plays)."""
-    from homeassistant.helpers.template import TemplateError
+async def test_condition_error_defaults_to_true(mock_engine, mock_storage, mock_hass):
+    """An unavailable entity fails open (event plays)."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
-        "priority": "normal", "volume": 0.35, "condition": "{{ broken }}",
+        "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
+    # Condition exists but entity is unavailable (states.get returns None)
+    cond_mock = mock_hass.data["house_voice"]["conditions"]
+    cond_mock.get_condition = MagicMock(return_value={
+        "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
+    })
+    mock_hass.states.get = MagicMock(return_value=None)  # entity not found
+
     mock_engine.start()
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False), \
          patch("custom_components.house_voice.voice_engine.Template") as mock_tpl_cls:
-        # First call: message render returns raw, second: condition raises
         mock_tpl = MagicMock()
-        mock_tpl.async_render.side_effect = [TemplateError("bad"), TemplateError("bad")]
+        mock_tpl.async_render.return_value = "Test"
         mock_tpl_cls.return_value = mock_tpl
 
         await mock_engine.say("ev1")
         await _flush_queue(mock_engine)
 
-    # Fail-open: ultra_tts should still have been called
+    # Fail-open: unavailable entity skips check, event plays
     mock_engine.hass.services.async_call.assert_called_once()
     await mock_engine.stop()
 

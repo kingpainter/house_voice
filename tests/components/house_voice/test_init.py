@@ -24,9 +24,11 @@ def mock_config_entry():
 
 @pytest.mark.asyncio
 async def test_async_setup_entry_registers_services(mock_hass, mock_config_entry):
-    """Setup registers all 4 HA services."""
+    """Setup registers all 4 HA services (+ say_text = 5 total)."""
     with patch("custom_components.house_voice.HouseVoiceStorage") as mock_storage_cls, \
-         patch("custom_components.house_voice.VoiceEngine"), \
+         patch("custom_components.house_voice.HouseVoiceGroups") as mock_groups_cls, \
+         patch("custom_components.house_voice.HouseVoiceConditions") as mock_cond_cls, \
+         patch("custom_components.house_voice.VoiceEngine") as mock_engine_cls, \
          patch("custom_components.house_voice.async_register_panel", new=AsyncMock()), \
          patch("custom_components.house_voice.async_register_websocket_commands"), \
          patch.object(mock_hass.config_entries, "async_forward_entry_setups", new=AsyncMock()):
@@ -36,11 +38,26 @@ async def test_async_setup_entry_registers_services(mock_hass, mock_config_entry
         mock_storage.data = {}
         mock_storage_cls.return_value = mock_storage
 
+        mock_groups = MagicMock()
+        mock_groups.async_load = AsyncMock()
+        mock_groups.data = {}
+        mock_groups_cls.return_value = mock_groups
+
+        mock_cond = MagicMock()
+        mock_cond.async_load = AsyncMock()
+        mock_cond.data = {}
+        mock_cond_cls.return_value = mock_cond
+
+        mock_engine = MagicMock()
+        mock_engine.start = MagicMock()
+        mock_engine_cls.return_value = mock_engine
+
         from custom_components.house_voice import async_setup_entry
         result = await async_setup_entry(mock_hass, mock_config_entry)
 
     assert result is True
-    assert mock_hass.services.async_register.call_count == 4
+    # 5 services: say, say_text, add_event, delete_event, test_event
+    assert mock_hass.services.async_register.call_count == 5
 
     registered = {
         call[0][1]
@@ -56,6 +73,8 @@ async def test_async_setup_entry_registers_services(mock_hass, mock_config_entry
 async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
     """Setup stores engine and storage in hass.data."""
     with patch("custom_components.house_voice.HouseVoiceStorage") as mock_storage_cls, \
+         patch("custom_components.house_voice.HouseVoiceGroups") as mock_groups_cls, \
+         patch("custom_components.house_voice.HouseVoiceConditions") as mock_cond_cls, \
          patch("custom_components.house_voice.VoiceEngine") as mock_engine_cls, \
          patch("custom_components.house_voice.async_register_panel", new=AsyncMock()), \
          patch("custom_components.house_voice.async_register_websocket_commands"), \
@@ -66,7 +85,18 @@ async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
         mock_storage.data = {}
         mock_storage_cls.return_value = mock_storage
 
+        mock_groups = MagicMock()
+        mock_groups.async_load = AsyncMock()
+        mock_groups.data = {}
+        mock_groups_cls.return_value = mock_groups
+
+        mock_cond = MagicMock()
+        mock_cond.async_load = AsyncMock()
+        mock_cond.data = {}
+        mock_cond_cls.return_value = mock_cond
+
         mock_engine = MagicMock()
+        mock_engine.start = MagicMock()
         mock_engine_cls.return_value = mock_engine
 
         from custom_components.house_voice import async_setup_entry
@@ -78,10 +108,14 @@ async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
 
 @pytest.mark.asyncio
 async def test_async_unload_entry_removes_services(mock_hass, mock_config_entry):
-    """Unload removes all 4 services and clears hass.data."""
+    """Unload removes all services and clears hass.data."""
+    mock_engine = MagicMock()
+    mock_engine.stop = AsyncMock()
     mock_hass.data[DOMAIN] = {
         "storage": MagicMock(),
-        "engine":  MagicMock(),
+        "groups":  MagicMock(),
+        "conditions": MagicMock(),
+        "engine":  mock_engine,
         "sensor":  None,
         "_panel_registered": True,
     }
@@ -94,5 +128,6 @@ async def test_async_unload_entry_removes_services(mock_hass, mock_config_entry)
         result = await async_unload_entry(mock_hass, mock_config_entry)
 
     assert result is True
-    assert mock_hass.services.async_remove.call_count == 4
+    # 5 services: say, say_text, add_event, delete_event, test_event
+    assert mock_hass.services.async_remove.call_count == 5
     assert DOMAIN not in mock_hass.data

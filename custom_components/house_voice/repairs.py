@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: repairs.py
 # Description: Repairs support for House Voice Manager.
 #              Creates a HA repair issue if script.ultra_tts is not found.
@@ -8,6 +8,7 @@ from __future__ import annotations
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
 
@@ -25,8 +26,6 @@ async def async_create_fix_flow(
 
 def raise_issue_ultra_tts_missing(hass: HomeAssistant) -> None:
     """Create a repair issue if script.ultra_tts is not available."""
-    from homeassistant.helpers import issue_registry as ir
-
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -40,6 +39,4 @@ def raise_issue_ultra_tts_missing(hass: HomeAssistant) -> None:
 
 def clear_issue_ultra_tts_missing(hass: HomeAssistant) -> None:
     """Remove the ultra_tts_missing repair issue."""
-    from homeassistant.helpers import issue_registry as ir
-
     ir.async_delete_issue(hass, DOMAIN, ISSUE_ULTRA_TTS_MISSING)

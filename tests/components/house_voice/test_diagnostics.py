@@ -37,11 +37,13 @@ async def test_diagnostics_quiet_hours_active(mock_hass, mock_storage):
     from custom_components.house_voice.diagnostics import async_get_config_entry_diagnostics
 
     mock_storage.data = {}
-    mock_hass.data[DOMAIN] = {"storage": mock_storage, "sensor": None}
+    mock_hass.data[DOMAIN] = {"storage": mock_storage, "sensor": None,
+                               "groups": None, "engine": None}
 
     entry = MagicMock()
+    entry.options = {}
 
-    with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
+    with patch("custom_components.house_voice.voice_engine.dt_util") as mock_dt:
         mock_dt.now.return_value = MagicMock(hour=23)
         result = await async_get_config_entry_diagnostics(mock_hass, entry)
 
