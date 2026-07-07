@@ -4,6 +4,34 @@ All notable changes to House Voice Manager are documented here.
 
 ---
 
+## [3.2.0] – 2026-07-07
+
+### Added
+- **Condition Library** (`storage.py` – `HouseVoiceConditions`) – named, reusable conditions replace raw Jinja2 template conditions on events. Each condition maps an ID to a label, `entity_id` and expected state (e.g. `nogen_hjemme` → `binary_sensor.nogen_hjemme` == `on`).
+- `voice_engine._eval_conditions()` evaluates a list of condition IDs with **AND logic** before playback. Fail-open behaviour: an unknown condition ID or an unavailable entity does not block playback (logged as a warning instead).
+- Events now store `conditions: list[str]` (condition IDs) instead of a single raw Jinja2 `condition` string.
+- 3 new WebSocket commands: `get_conditions`, `save_condition`, `delete_condition` (12 commands total, up from 9).
+- Panel: new Condition Library section on the Events tab with its own add/edit/delete flyout form, plus a condition checkbox list and badge (⚡) on the event form/cards.
+
+### Changed
+- `ws_save_event` schema: `conditions` (list) replaces the old free-text `condition` field.
+- `strings.json` / `translations/en.json` / `translations/da.json`: `add_event` service field renamed from `condition` (singular, described a raw Jinja2 template) to `conditions` (plural, list of Condition Library IDs) — the old strings no longer matched the actual `conditions` field in the `add_event` service schema.
+- `services.yaml` fully rewritten to match the actual service schemas in `__init__.py`: added the missing `say_text` service entirely, and added `priority`/`volume`/`conditions` fields to `add_event` (previously only `event`/`message`/`speakers` were listed). All fields now use proper HA selectors (`text`, `select`, `number` with slider) instead of bare `example` values, so the Developer Tools → Services UI now renders correct input controls.
+- `house-voice-panel.js` reload button no longer falls back to the incorrect `reload_custom_templates` service call when the config entry ID can't be resolved. It now fails loudly with a clear notification instructing manual reload via Settings → Devices & Services, instead of silently calling a service that reloads Jinja2 templates rather than this integration.
+
+### Fixed
+- Version numbers in `groups.py`, `ultra_tts.py`, `__init__.py`, `panel.py` and `manifest.json` were out of sync with `const.py`/`voice_engine.py`/`websocket.py`/`storage.py`/`config_flow.py` after the Condition Library was implemented. All files now consistently report 3.2.0.
+
+### Added (continued)
+- `tests/test_conditions.py` – full coverage of `HouseVoiceConditions` storage (load/add/delete/get) and the `get_conditions`/`save_condition`/`delete_condition` WebSocket commands. The AND-logic evaluation itself (`_eval_conditions`) was already covered in `test_voice_engine_v22.py`.
+- `tests/test_ultra_tts_v32.py` – duck-threshold coverage (idle vs. playing-above/below-0.25 volume), `_find_heos_sibling` (device_id strategy, unique_id fallback, no-match, missing-entry), `_needs_queue_clear` via `app_id`, and the new configurable `tts_entity`.
+- **`TTS_ENTITY` configurable via Options Flow** – new `CONF_TTS_ENTITY`/`DEFAULT_TTS_ENTITY` in `const.py`. `UltraTTS.__init__` now accepts an optional `tts_entity` parameter (defaults to `tts.home_assistant_cloud`). `voice_engine._execute_tts` reads the configured entity from `entry.options` on every call. Options Flow form extended with a text field for the TTS entity ID.
+
+### Deferred
+- `hass.data[DOMAIN]` → `entry.runtime_data` migration is intentionally **not** included in this release. It touches ~10 files plus the entire test suite's mocking pattern, and cannot be verified locally (no Python execution available in this environment) — it needs an explicit go-ahead and manual `pytest` verification by the maintainer before being attempted.
+
+---
+
 ## [3.1.1] – 2026-05-23
 
 ### Fixed

@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
 #              Handles volume set, tts.speak, dynamic delay, volume restore.
@@ -33,8 +33,9 @@ _DUCK_FACTOR: dict[str, float] = {
 class UltraTTS:
     """Native Python TTS executor."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, tts_entity: str = TTS_ENTITY) -> None:
         self.hass = hass
+        self.tts_entity = tts_entity
 
     async def async_speak(
         self,
@@ -95,7 +96,7 @@ class UltraTTS:
                     "message": message,
                     "media_player_entity_id": speakers[0] if len(speakers) == 1 else speakers,
                 },
-                target={"entity_id": TTS_ENTITY},
+                target={"entity_id": self.tts_entity},
                 blocking=False,
             )
 

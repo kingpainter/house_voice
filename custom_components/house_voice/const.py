@@ -32,12 +32,14 @@ CUSTOM_COMPONENTS = "custom_components"
 # Options / config entry keys
 CONF_QUIET_START   = "quiet_hours_start"
 CONF_QUIET_END     = "quiet_hours_end"
+CONF_TTS_ENTITY    = "tts_entity"
 
 # Defaults
 DEFAULT_QUIET_START = 22
 DEFAULT_QUIET_END   = 7
 DEFAULT_VOLUME      = 0.35
 DEFAULT_PRIORITY    = "normal"
+DEFAULT_TTS_ENTITY  = "tts.home_assistant_cloud"
 
 # Valid priorities
 PRIORITIES = ("info", "normal", "critical")

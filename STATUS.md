@@ -1,7 +1,7 @@
 # House Voice – Project Status
 
-**Version:** 3.1.1
-**Date:** 2026-05-23
+**Version:** 3.2.0
+**Date:** 2026-07-07
 **Status:** Stabil
 
 ---
@@ -19,7 +19,8 @@
 | v3.0.1 – HEOS queue fix | ✅ Complete |
 | v3.0.2 – Panel reload crash fix | ✅ Complete |
 | v3.1.1 – Volume + HEOS kø fix | ✅ Complete |
-| Gold tier compliance | 🔄 `test_full_coverage` remaining |
+| v3.2.0 – Condition Library | ✅ Complete |
+| Gold tier compliance | 🔄 `test_full_coverage` – Condition Library + UltraTTS v3.2.0 tests added 2026-07-07, `hass.data`→`runtime_data` migration still pending |
 
 ---
 
@@ -27,25 +28,26 @@
 
 | File | Version | Notes |
 |------|---------|-------|
-| `__init__.py` | 3.0.0 | +`say_text` service, groups init, engine lifecycle |
-| `manifest.json` | 3.0.0 | version bumped |
-| `const.py` | 3.0.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `PRIORITIES`, `STORAGE_GROUPS_KEY` |
-| `config_flow.py` | 2.2.0 | +Options Flow for quiet hours start/end |
-| `voice_engine.py` | 3.0.0 | `_execute_tts` → `UltraTTS`, queue worker supervision |
-| `ultra_tts.py` | 3.1.1 | Native duck/speak/restore, HEOS sibling detection, MA app_id check |
-| `panel.py` | 3.0.2 | Session-level static path guard — reload crash fix |
-| `groups.py` | 2.2.0 | Speaker group storage + `resolve_speakers()` |
-| `storage.py` | 2.1.0 | Unchanged |
-| `websocket.py` | 2.2.0 | 9 commands |
+| `__init__.py` | 3.2.0 | +`say_text` service, groups + conditions init, engine lifecycle |
+| `manifest.json` | 3.2.0 | version bumped |
+| `const.py` | 3.2.0 | +`SERVICE_SAY_TEXT`, `CONF_QUIET_*`, `CONF_TTS_ENTITY`, `PRIORITIES`, `STORAGE_GROUPS_KEY`, `STORAGE_CONDITIONS_KEY` |
+| `config_flow.py` | 3.2.0 | Options Flow for quiet hours start/end + TTS entity |
+| `voice_engine.py` | 3.2.0 | `_execute_tts` → `UltraTTS` (now with configurable `tts_entity`), queue worker supervision, Condition Library evaluation (`_eval_conditions`) |
+| `ultra_tts.py` | 3.2.0 | Native duck/speak/restore, HEOS sibling detection, MA app_id check, configurable `tts_entity` |
+| `panel.py` | 3.2.0 | Session-level static path guard — reload crash fix |
+| `groups.py` | 3.2.0 | Speaker group storage + `resolve_speakers()` |
+| `storage.py` | 3.2.0 | +`HouseVoiceConditions` – condition library storage |
+| `websocket.py` | 3.2.0 | 12 commands (+`get/save/delete_condition`) |
 | `sensor.py` | 2.0.0 | Unchanged |
 | `system_health.py` | 2.2.0 | +`groups_count`, `queue_size` |
 | `diagnostics.py` | 2.2.0 | +`groups_count`, `group_ids`, `history_count`, quiet hours config |
 | `repairs.py` | 2.0.0 | Unchanged |
-| `strings.json` | 2.2.0 | +Options Flow, `say_text`, `condition` |
+| `services.yaml` | 3.2.0 | Rewritten — added `say_text`, added `priority`/`volume`/`conditions` to `add_event`, proper selectors throughout |
+| `strings.json` | 3.2.0 | `conditions` field renamed to match service schema — was `condition` (Jinja2 string), now `conditions` (list) |
 | `quality_scale.yaml` | 2.0.0 | Unchanged |
-| `house-voice-panel.js` | 2.2.0 | 3-tab layout + Reload-knap |
-| `translations/en.json` | 2.2.0 | Unchanged |
-| `translations/da.json` | 2.2.0 | Unchanged |
+| `house-voice-panel.js` | 3.2.0 | 3-tab layout + Condition Library section + fixed reload-knap |
+| `translations/en.json` | 3.2.0 | `conditions` field renamed to match service schema |
+| `translations/da.json` | 3.2.0 | `conditions` field renamed to match service schema |
 | `hacs.json` | 2.0.0 | Unchanged |
 | `.github/workflows/tests.yml` | 2.0.0 | Unchanged |
 | `requirements-test.txt` | 2.0.0 | Unchanged |
@@ -78,6 +80,9 @@
 | `house_voice/save_group` | async | Opret/opdater gruppe |
 | `house_voice/delete_group` | async | Slet gruppe |
 | `house_voice/get_history` | sync | In-memory historik (50 entries, nyeste først) |
+| `house_voice/get_conditions` | sync | Alle gemte betingelser i biblioteket |
+| `house_voice/save_condition` | async | Opret/opdater betingelse |
+| `house_voice/delete_condition` | async | Slet betingelse |
 
 ---
 
@@ -150,7 +155,9 @@
 | `test_system_health.py` | 4 | Fields, no storage, register |
 | `test_repairs.py` | 4 | Create issue, delete issue, fix flow |
 | `test_ultra_tts.py` | 22 | duck/speak/restore, HEOS detection, queue clear, sibling |
-| **Total** | **129** | |
+| `test_conditions.py` | 20 | HouseVoiceConditions storage + 3 condition WS commands (NEW 2026-07-07) |
+| `test_ultra_tts_v32.py` | 10 | Duck threshold, HEOS sibling detection, app_id platform check, configurable tts_entity (NEW 2026-07-07) |
+| **Total** | **159** | |
 
 CI: GitHub Actions kører ved hvert push til `main`/`master`/`dev`.
 
@@ -174,7 +181,15 @@ Ingen. 🟢
 
 ## Next Recommended Actions
 
-1. Push til GitHub → verificer CI er grøn
-2. `TTS_ENTITY` konfigurerbar via Options Flow
-3. `hass.data[DOMAIN]` → `entry.runtime_data` migration
-4. `test_ultra_tts.py` opdateres til v3.1.1 (sibling-detection tests)
+1. Push til GitHub → verificer CI er grøn (149 nye/eksisterende tests, kør selv `pytest` for at bekræfte – kan ikke køres herfra)
+2. **`hass.data[DOMAIN]` → `entry.runtime_data` migration** – stor omskrivning, afventer eksplicit godkendelse (se "Deferred" i CHANGELOG)
+3. `test_ultra_tts.py` (den oprindelige, v3.0.0-fil) kunne konsolideres med `test_ultra_tts_v32.py` på sigt – ikke nødvendigt nu
+
+## Known Issues (fundet 2026-07-07)
+
+- Panel reload-knap kaldte tidligere `reload_custom_templates` som fallback når `config_entry_id` ikke kunne findes – rettet, viser nu klar fejlbesked i stedet.
+- `strings.json`/`en.json`/`da.json` dokumenterede et forkert felt (`condition` som Jinja2-streng) på `add_event` – rettet til `conditions` (liste af Condition Library-IDs), som matcher det faktiske service-schema.
+- `services.yaml` var stadig fra v2.0.0 – manglede `say_text` og flere felter på `add_event`. **Rettet 2026-07-07** — alle 5 services har nu korrekte felter og selectors.
+- Condition Library tests manglede – **rettet 2026-07-07** via `test_conditions.py` (20 tests).
+- `TTS_ENTITY` var hardcoded – **rettet 2026-07-07**, nu konfigurerbar via Options Flow.
+- `hass.data[DOMAIN]` → `entry.runtime_data` migration er **IKKE** udført – stor omskrivning af ~10 filer + hele testsuiten, kan ikke verificeres uden at køre pytest lokalt. Afventer eksplicit go-ahead.

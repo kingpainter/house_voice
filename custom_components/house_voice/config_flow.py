@@ -21,8 +21,10 @@ except ImportError:
 from .const import (
     CONF_QUIET_END,
     CONF_QUIET_START,
+    CONF_TTS_ENTITY,
     DEFAULT_QUIET_END,
     DEFAULT_QUIET_START,
+    DEFAULT_TTS_ENTITY,
     DOMAIN,
 )
 
@@ -62,7 +64,7 @@ class HouseVoiceConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HouseVoiceOptionsFlow(OptionsFlow):
-    """Handle House Voice options – quiet hours configuration."""
+    """Handle House Voice options – quiet hours and TTS entity configuration."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._config_entry = config_entry
@@ -76,6 +78,7 @@ class HouseVoiceOptionsFlow(OptionsFlow):
 
         current_start = self._config_entry.options.get(CONF_QUIET_START, DEFAULT_QUIET_START)
         current_end   = self._config_entry.options.get(CONF_QUIET_END,   DEFAULT_QUIET_END)
+        current_tts   = self._config_entry.options.get(CONF_TTS_ENTITY,  DEFAULT_TTS_ENTITY)
 
         return self.async_show_form(
             step_id="init",
@@ -86,9 +89,11 @@ class HouseVoiceOptionsFlow(OptionsFlow):
                 vol.Required(CONF_QUIET_END, default=current_end): vol.All(
                     int, vol.Range(min=0, max=23)
                 ),
+                vol.Required(CONF_TTS_ENTITY, default=current_tts): str,
             }),
             description_placeholders={
                 "quiet_start": str(current_start),
                 "quiet_end":   str(current_end),
+                "tts_entity":  current_tts,
             },
         )

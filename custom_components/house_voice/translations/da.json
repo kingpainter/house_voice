@@ -14,10 +14,11 @@
     "step": {
       "init": {
         "title": "House Voice – Indstillinger",
-        "description": "Konfigurer stille timer. I stille timer afspilles kun **critical** prioritets-beskeder.",
+        "description": "Konfigurer stille timer og TTS-entiteten. I stille timer afspilles kun **critical** prioritets-beskeder.",
         "data": {
           "quiet_hours_start": "Stille timer starter (time, 0–23)",
-          "quiet_hours_end":   "Stille timer slutter (time, 0–23)"
+          "quiet_hours_end":   "Stille timer slutter (time, 0–23)",
+          "tts_entity":        "TTS entity ID (fx tts.home_assistant_cloud)"
         }
       }
     }
@@ -96,9 +97,9 @@
           "name": "Volumen",
           "description": "Volumen mellem 0.05 og 1.0."
         },
-        "condition": {
-          "name": "Betingelse",
-          "description": "Valgfrit Jinja2 template der skal evaluere til sandt for at eventet afspilles. Lad feltet stå tomt for altid at afspille."
+        "conditions": {
+          "name": "Betingelser",
+          "description": "Valgfri liste af betingelses-ID'er fra Betingelsesbiblioteket. Eventet afspilles kun når ALLE valgte betingelser er opfyldt (AND-logik). Lad stå tomt for altid at afspille."
         }
       }
     },

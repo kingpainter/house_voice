@@ -1,4 +1,4 @@
-# VERSION = "3.1.1"
+# VERSION = "3.2.0"
 #              Registers services, WebSocket API, sidebar panel and sensor.
 
 from __future__ import annotations

@@ -1,29 +1,134 @@
 say:
   name: Say voice event
-  description: Speak a house voice message
+  description: Speak a stored voice event by ID.
   fields:
     event:
+      name: Event ID
+      description: The ID of the voice event to speak.
       required: true
       example: dishwasher_open
+      selector:
+        text:
+
+say_text:
+  name: Say text
+  description: Speak an ad-hoc text message without a stored event. Supports Jinja2 templates.
+  fields:
+    message:
+      name: Message
+      description: The text to speak. Supports Jinja2 templates.
+      required: true
+      example: "Nogen er hjemme"
+      selector:
+        text:
+    speakers:
+      name: Speakers
+      description: One or more media_player entity IDs or group references (prefix with 'group:').
+      required: true
+      example: media_player.stue
+      selector:
+        text:
+          multiple: true
+    priority:
+      name: Priority
+      description: Priority level - info, normal or critical.
+      example: normal
+      default: normal
+      selector:
+        select:
+          options:
+            - info
+            - normal
+            - critical
+    volume:
+      name: Volume
+      description: Volume level between 0.05 and 1.0.
+      example: 0.35
+      default: 0.35
+      selector:
+        number:
+          min: 0.05
+          max: 1.0
+          step: 0.05
+          mode: slider
 
 add_event:
   name: Add voice event
+  description: Add or update a voice event in storage.
   fields:
     event:
+      name: Event ID
+      description: Unique identifier for this voice event.
+      required: true
       example: dishwasher_open
+      selector:
+        text:
     message:
-      example: Opvaskeren er åben
+      name: Message
+      description: The TTS message text. Supports Jinja2 templates.
+      required: true
+      example: Opvaskeren er færdig
+      selector:
+        text:
     speakers:
+      name: Speakers
+      description: One or more media_player entity IDs or group references (prefix with 'group:').
+      required: true
       example: media_player.kokken
+      selector:
+        text:
+          multiple: true
+    priority:
+      name: Priority
+      description: Priority level - info, normal or critical.
+      example: normal
+      default: normal
+      selector:
+        select:
+          options:
+            - info
+            - normal
+            - critical
+    volume:
+      name: Volume
+      description: Volume level between 0.05 and 1.0.
+      example: 0.35
+      default: 0.35
+      selector:
+        number:
+          min: 0.05
+          max: 1.0
+          step: 0.05
+          mode: slider
+    conditions:
+      name: Conditions
+      description: Optional list of Condition Library IDs. The event only plays if ALL selected conditions are met (AND logic). Leave empty to always play.
+      example: []
+      default: []
+      selector:
+        text:
+          multiple: true
 
 delete_event:
   name: Delete voice event
+  description: Delete a voice event from storage.
   fields:
     event:
+      name: Event ID
+      description: The ID of the voice event to delete.
+      required: true
       example: dishwasher_open
+      selector:
+        text:
 
 test_event:
   name: Test voice event
+  description: Test-speak a stored voice event immediately, bypassing the spam filter.
   fields:
     event:
+      name: Event ID
+      description: The ID of the voice event to test.
+      required: true
       example: dishwasher_open
+      selector:
+        text:

@@ -95,21 +95,26 @@ class HouseVoicePanel extends HTMLElement {
   async _reload() {
     if (!confirm("Genindlæs House Voice Manager?")) return;
     try {
-      // Find our own config entry ID via the entity registry
+      // Find our own config entry ID via the entity registry.
+      // NOTE: there is intentionally no fallback service call here — an
+      // earlier version fell back to `reload_custom_templates`, which
+      // reloads Jinja2 templates, not this integration. Silently calling
+      // the wrong service looked like success but did nothing, so we now
+      // fail loudly and point the user to the manual reload path instead.
       const entityId = "sensor.house_voice_today";
-      const stateObj = this._hass.states[entityId];
-      const entryId  = stateObj?.attributes?.entry_id ||
-                       Object.values(this._hass.entities || {})
-                         .find(e => e.entity_id === entityId)?.config_entry_id;
+      const entryId  = this._hass.entities?.[entityId]?.config_entry_id;
 
-      if (entryId) {
-        await this._hass.callService("homeassistant", "reload_config_entry", {
-          entry_id: entryId,
-        });
-      } else {
-        // Fallback: reload all integrations (works without entry_id)
-        await this._hass.callService("homeassistant", "reload_custom_templates", {});
+      if (!entryId) {
+        this._notify(
+          "Kunne ikke finde config entry — genindlæs manuelt via Indstillinger → Enheder & tjenester.",
+          "error"
+        );
+        return;
       }
+
+      await this._hass.callService("homeassistant", "reload_config_entry", {
+        entry_id: entryId,
+      });
       this._notify("♻️ House Voice genindlæst");
       setTimeout(() => this._load(), 1500);
     } catch (e) {

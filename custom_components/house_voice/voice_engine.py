@@ -21,9 +21,11 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_QUIET_END,
     CONF_QUIET_START,
+    CONF_TTS_ENTITY,
     DEFAULT_PRIORITY,
     DEFAULT_QUIET_END,
     DEFAULT_QUIET_START,
+    DEFAULT_TTS_ENTITY,
     DEFAULT_VOLUME,
     DOMAIN,
 )
@@ -392,7 +394,9 @@ class VoiceEngine:
     ) -> None:
         """Execute a single TTS call via the native UltraTTS engine."""
         try:
-            tts = UltraTTS(self.hass)
+            options = self.entry.options if self.entry else {}
+            tts_entity = options.get(CONF_TTS_ENTITY, DEFAULT_TTS_ENTITY)
+            tts = UltraTTS(self.hass, tts_entity=tts_entity)
             await tts.async_speak(
                 speaker=speaker_str,
                 message=message,
