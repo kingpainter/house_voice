@@ -1,9 +1,10 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
 #              conditional playback, async TTS queue, event history log.
 #              v3.0.0: _execute_tts now uses native UltraTTS instead of script.ultra_tts.
+#              v3.3.0: conditions/sensor lookups moved to entry.runtime_data.
 
 from __future__ import annotations
 
@@ -307,7 +308,8 @@ class VoiceEngine:
         Returns True (allow playback) if ALL conditions are met.
         Returns True if any condition_id is not found in the library (fail-open).
         """
-        conditions_storage = self.hass.data.get(DOMAIN, {}).get("conditions")
+        conditions_storage = getattr(self.entry, "runtime_data", None)
+        conditions_storage = getattr(conditions_storage, "conditions", None) if conditions_storage else None
         if not conditions_storage:
             _LOGGER.warning(
                 "House Voice: Conditions storage not available for '%s', defaulting to True",
@@ -425,7 +427,8 @@ class VoiceEngine:
     def _increment_sensor(self) -> None:
         """Increment the statistics sensor. Silently ignored on failure."""
         try:
-            sensor = self.hass.data.get(DOMAIN, {}).get("sensor")
+            runtime = getattr(self.entry, "runtime_data", None)
+            sensor = getattr(runtime, "sensor", None) if runtime else None
             if sensor is not None:
                 sensor.increment()
         except Exception as err:  # noqa: BLE001

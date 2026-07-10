@@ -1,6 +1,7 @@
-# VERSION = "3.1.1"
+# VERSION = "3.3.0"
 # File: sensor.py
 # Description: Statistics sensor for House Voice Manager – counts TTS messages today
+#              v3.3.0: registers itself on entry.runtime_data instead of hass.data[DOMAIN].
 
 from __future__ import annotations
 
@@ -12,8 +13,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -24,7 +23,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up House Voice sensor from config entry."""
     sensor = HouseVoiceTodaySensor()
-    hass.data[DOMAIN]["sensor"] = sensor
+    if getattr(entry, "runtime_data", None) is not None:
+        entry.runtime_data.sensor = sensor
     async_add_entities([sensor])
 
 

@@ -1,6 +1,7 @@
-# VERSION = "3.1.1"
+# VERSION = "3.3.0"
 # File: diagnostics.py
 # Description: Diagnostics support for House Voice Manager
+#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
 
 from __future__ import annotations
 
@@ -15,7 +16,6 @@ from .const import (
     CONF_QUIET_START,
     DEFAULT_QUIET_END,
     DEFAULT_QUIET_START,
-    DOMAIN,
     VERSION,
 )
 from .voice_engine import _is_quiet_hours
@@ -27,11 +27,11 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
 
-    data    = hass.data.get(DOMAIN, {})
-    storage = data.get("storage")
-    groups  = data.get("groups")
-    sensor  = data.get("sensor")
-    engine  = data.get("engine")
+    runtime = getattr(entry, "runtime_data", None)
+    storage = getattr(runtime, "storage", None)
+    groups  = getattr(runtime, "groups", None)
+    sensor  = getattr(runtime, "sensor", None)
+    engine  = getattr(runtime, "engine", None)
 
     event_ids   = list(storage.data.keys()) if storage else []
     group_ids   = list(groups.data.keys())  if groups  else []

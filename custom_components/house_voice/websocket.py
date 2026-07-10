@@ -1,9 +1,12 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
 #              test_event, get_groups, save_group, delete_group, get_history,
 #              get_conditions, save_condition, delete_condition.
+#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
+#              WS handlers only receive `hass`, so the single House Voice config
+#              entry is resolved via hass.config_entries.async_entries(DOMAIN).
 
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ import logging
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 
@@ -36,24 +40,34 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     _LOGGER.info("House Voice WebSocket API registered (12 commands)")
 
 
+def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
+    """Return the (single) House Voice config entry, or None if not set up."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    return entries[0] if entries else None
+
+
 def _get_storage(hass: HomeAssistant):
     """Return storage instance or None."""
-    return hass.data.get(DOMAIN, {}).get("storage")
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "storage", None) if entry else None
 
 
 def _get_groups(hass: HomeAssistant):
     """Return groups instance or None."""
-    return hass.data.get(DOMAIN, {}).get("groups")
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "groups", None) if entry else None
 
 
 def _get_conditions(hass: HomeAssistant):
     """Return conditions instance or None."""
-    return hass.data.get(DOMAIN, {}).get("conditions")
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "conditions", None) if entry else None
 
 
 def _get_engine(hass: HomeAssistant):
     """Return engine instance or None."""
-    return hass.data.get(DOMAIN, {}).get("engine")
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "engine", None) if entry else None
 
 
 # ── Get all voice events ───────────────────────────────────────────────────────

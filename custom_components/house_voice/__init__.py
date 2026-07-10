@@ -1,9 +1,12 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 #              Registers services, WebSocket API, sidebar panel and sensor.
+#              v3.3.0: migrated hass.data[DOMAIN] → entry.runtime_data (HA 2026 best practice).
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -36,6 +39,25 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS = [Platform.SENSOR]
 
 
+@dataclass
+class HouseVoiceRuntimeData:
+    """Runtime data stored on the config entry (HA 2026 best practice).
+
+    Replaces the old hass.data[DOMAIN] dict. `sensor` is set later by
+    sensor.py's async_setup_entry once the platform is forwarded, and
+    `panel_registered` tracks whether the sidebar panel entry is currently
+    registered (separate from the session-level static HTTP path guard
+    in panel.py, which intentionally lives outside runtime_data).
+    """
+
+    storage: HouseVoiceStorage
+    groups: HouseVoiceGroups
+    conditions: HouseVoiceConditions
+    engine: VoiceEngine
+    sensor: Any | None = None
+    panel_registered: bool = False
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up House Voice Manager from a config entry."""
 
@@ -55,15 +77,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     engine = VoiceEngine(hass, storage, groups, entry)
     engine.start()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN] = {
-        "storage":           storage,
-        "groups":            groups,
-        "conditions":        conditions,
-        "engine":            engine,
-        "sensor":            None,
-        "_panel_registered": False,
-    }
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=storage,
+        groups=groups,
+        conditions=conditions,
+        engine=engine,
+    )
 
     # ── Load sensor platform ───────────────────────────────────────────────
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -164,7 +183,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_register_websocket_commands(hass)
 
     # ── Register sidebar panel ─────────────────────────────────────────────
-    await async_register_panel(hass)
+    await async_register_panel(hass, entry)
 
     _LOGGER.info("House Voice Manager v%s setup complete (conditions library loaded)", VERSION)
     return True
@@ -173,20 +192,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload House Voice Manager config entry."""
 
-    data = hass.data.get(DOMAIN, {})
+    runtime_data: HouseVoiceRuntimeData | None = getattr(entry, "runtime_data", None)
 
     # Stop queue worker
-    engine = data.get("engine")
-    if engine:
-        await engine.stop()
+    if runtime_data and runtime_data.engine:
+        await runtime_data.engine.stop()
 
     await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    async_unregister_panel(hass)
+    async_unregister_panel(hass, entry)
 
     for service in (SERVICE_SAY, SERVICE_SAY_TEXT, SERVICE_ADD, SERVICE_DELETE, SERVICE_TEST):
         hass.services.async_remove(DOMAIN, service)
-
-    hass.data.pop(DOMAIN, None)
 
     _LOGGER.info("House Voice Manager v%s unloaded", VERSION)
     return True

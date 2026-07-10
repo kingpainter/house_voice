@@ -1,9 +1,10 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: panel.py
 # Description: Registers the House Voice Manager sidebar panel as a static
 #              HTTP path and custom web component in Home Assistant.
 #              The static HTTP path survives reloads (aiohttp router is permanent),
 #              so it is tracked at session level and only registered once per HA session.
+#              v3.3.0: panel_registered flag moved to entry.runtime_data.
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import logging
 import os
 
 from homeassistant.components import frontend, panel_custom
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -40,7 +42,7 @@ except ImportError:
     _HAS_STATIC_PATH_CONFIG = False
 
 
-async def async_register_panel(hass: HomeAssistant) -> None:
+async def async_register_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register the House Voice sidebar panel."""
 
     root_dir     = os.path.join(hass.config.path(CUSTOM_COMPONENTS), DOMAIN)
@@ -76,7 +78,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         _LOGGER.debug("House Voice panel static path already registered, skipping")
 
     # Guard against double panel registration within the same HA session
-    if hass.data[DOMAIN].get("_panel_registered", False):
+    if getattr(entry.runtime_data, "panel_registered", False):
         _LOGGER.debug("House Voice panel already registered, skipping")
         return
 
@@ -92,14 +94,14 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         config={},
     )
 
-    hass.data[DOMAIN]["_panel_registered"] = True
+    entry.runtime_data.panel_registered = True
     _LOGGER.info("House Voice panel registered in sidebar at /%s", DOMAIN)
 
 
-def async_unregister_panel(hass: HomeAssistant) -> None:
+def async_unregister_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the House Voice panel from the sidebar."""
 
-    if hass.data.get(DOMAIN, {}).get("_panel_registered", False):
+    if getattr(entry.runtime_data, "panel_registered", False):
         frontend.async_remove_panel(hass, DOMAIN)
         _LOGGER.debug("House Voice panel removed from sidebar")
     else:
@@ -107,5 +109,5 @@ def async_unregister_panel(hass: HomeAssistant) -> None:
 
     # Clear the panel flag so the next setup re-registers the sidebar entry.
     # Do NOT clear _SESSION_KEY_STATIC – the HTTP route must not be re-added.
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["_panel_registered"] = False
+    if entry.runtime_data is not None:
+        entry.runtime_data.panel_registered = False

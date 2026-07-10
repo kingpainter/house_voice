@@ -102,15 +102,14 @@ async def test_spam_filter_blocks_without_bypass(mock_engine, mock_storage, samp
 # ── Conditions ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_hass):
+async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_hass, mock_conditions):
     """A condition that is met allows playback."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
         "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
     # Set up condition in library: entity is 'on'
-    cond_mock = mock_hass.data["house_voice"]["conditions"]
-    cond_mock.get_condition = MagicMock(return_value={
+    mock_conditions.get_condition = MagicMock(return_value={
         "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
     })
     state_mock = MagicMock()
@@ -137,15 +136,14 @@ async def test_condition_true_allows_playback(mock_engine, mock_storage, mock_ha
 
 
 @pytest.mark.asyncio
-async def test_condition_false_blocks_playback(mock_engine, mock_storage, mock_hass):
+async def test_condition_false_blocks_playback(mock_engine, mock_storage, mock_hass, mock_conditions):
     """A condition that is not met blocks playback and logs to history."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
         "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
     # Set up condition in library: entity is 'off' but expected 'on'
-    cond_mock = mock_hass.data["house_voice"]["conditions"]
-    cond_mock.get_condition = MagicMock(return_value={
+    mock_conditions.get_condition = MagicMock(return_value={
         "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
     })
     state_mock = MagicMock()
@@ -161,15 +159,14 @@ async def test_condition_false_blocks_playback(mock_engine, mock_storage, mock_h
 
 
 @pytest.mark.asyncio
-async def test_condition_error_defaults_to_true(mock_engine, mock_storage, mock_hass):
+async def test_condition_error_defaults_to_true(mock_engine, mock_storage, mock_hass, mock_conditions):
     """An unavailable entity fails open (event plays)."""
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": ["media_player.stue"],
         "priority": "normal", "volume": 0.35, "conditions": ["nogen_hjemme"],
     }
     # Condition exists but entity is unavailable (states.get returns None)
-    cond_mock = mock_hass.data["house_voice"]["conditions"]
-    cond_mock.get_condition = MagicMock(return_value={
+    mock_conditions.get_condition = MagicMock(return_value={
         "label": "Nogen er hjemme", "entity_id": "binary_sensor.nogen_hjemme", "state": "on"
     })
     mock_hass.states.get = MagicMock(return_value=None)  # entity not found

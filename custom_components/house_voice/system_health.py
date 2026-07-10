@@ -1,6 +1,7 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: system_health.py
 # Description: System Health info for House Voice Manager
+#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
 
 from homeassistant.components.system_health import SystemHealthRegistration
 from homeassistant.core import HomeAssistant
@@ -17,10 +18,13 @@ def async_register(
 
 async def system_health_info(hass: HomeAssistant) -> dict:
     """Return system health info."""
-    data    = hass.data.get(DOMAIN, {})
-    storage = data.get("storage")
-    groups  = data.get("groups")
-    engine  = data.get("engine")
+    entries = hass.config_entries.async_entries(DOMAIN)
+    entry   = entries[0] if entries else None
+    runtime = getattr(entry, "runtime_data", None) if entry else None
+
+    storage = getattr(runtime, "storage", None)
+    groups  = getattr(runtime, "groups", None)
+    engine  = getattr(runtime, "engine", None)
 
     return {
         "version":        VERSION,

@@ -1,5 +1,12 @@
-"""Shared fixtures for House Voice Manager tests."""
+"""Shared fixtures for House Voice Manager tests.
 
+v3.3.0: hass.data[DOMAIN] was replaced by entry.runtime_data. mock_entry now
+auto-registers itself into mock_hass.config_entries.async_entries(DOMAIN), so
+any test using both mock_hass and mock_entry gets automatic entry resolution
+for websocket.py / system_health.py / panel.py, which only receive `hass`.
+"""
+
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
@@ -20,6 +27,9 @@ def mock_hass():
     hass.states = MagicMock()
     hass.states.async_all = MagicMock(return_value=[])
     hass.states.get = MagicMock(return_value=None)
+    # No config entries registered by default; mock_entry wires this up when used.
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_entries = MagicMock(return_value=[])
     # Provide a real event loop reference for asyncio.Queue in VoiceEngine
     import asyncio
     hass.loop = asyncio.get_event_loop()
@@ -69,21 +79,56 @@ def mock_conditions(mock_hass):
 
 
 @pytest.fixture
-def mock_entry():
-    """Return a minimal mock ConfigEntry with empty options."""
+def mock_entry(mock_hass):
+    """Return a minimal mock ConfigEntry, auto-wired into hass.config_entries.
+
+    Any test that requests both mock_hass and mock_entry automatically gets
+    hass.config_entries.async_entries(DOMAIN) -> [mock_entry], matching how
+    websocket.py / system_health.py / panel.py resolve the single House Voice
+    entry in production.
+    """
     entry = MagicMock()
     entry.options = {}
+    entry.runtime_data = None
+    mock_hass.config_entries.async_entries = MagicMock(return_value=[entry])
     return entry
 
 
 @pytest.fixture
-def mock_engine(mock_hass, mock_storage, mock_groups, mock_entry):
-    """Return a VoiceEngine with mocked dependencies (v3.x signature)."""
+def make_runtime():
+    """Factory fixture: build a lightweight entry.runtime_data stand-in.
+
+    Usage: mock_entry.runtime_data = make_runtime(storage=mock_storage)
+    Any field not passed defaults to None (or False for panel_registered).
+    """
+    def _make(**kwargs):
+        defaults = {
+            "storage": None,
+            "groups": None,
+            "conditions": None,
+            "engine": None,
+            "sensor": None,
+            "panel_registered": False,
+        }
+        defaults.update(kwargs)
+        return SimpleNamespace(**defaults)
+    return _make
+
+
+@pytest.fixture
+def mock_engine(mock_hass, mock_storage, mock_groups, mock_conditions, mock_entry, make_runtime):
+    """Return a VoiceEngine with mocked dependencies (v3.3.0: entry.runtime_data)."""
     engine = VoiceEngine(mock_hass, mock_storage, mock_groups, mock_entry)
-    # Register conditions in hass.data so _eval_conditions can find them
-    mock_hass.data["house_voice"] = {"conditions": MagicMock()}
-    mock_hass.data["house_voice"]["conditions"].data = {}
-    mock_hass.data["house_voice"]["conditions"].get_condition = MagicMock(return_value=None)
+
+    # Wire up entry.runtime_data so _eval_conditions / _increment_sensor can find
+    # the conditions library and sensor, mirroring production's entry.runtime_data.
+    mock_conditions.get_condition = MagicMock(return_value=None)
+    mock_entry.runtime_data = make_runtime(
+        storage=mock_storage,
+        groups=mock_groups,
+        conditions=mock_conditions,
+        engine=engine,
+    )
     return engine
 
 
