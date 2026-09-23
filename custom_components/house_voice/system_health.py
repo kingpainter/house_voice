@@ -1,7 +1,7 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: system_health.py
 # Description: System Health info for House Voice Manager
-#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
+#              v3.3.1: reads from entry.runtime_data instead of hass.data[DOMAIN].
 
 from homeassistant.components.system_health import SystemHealthRegistration
 from homeassistant.core import HomeAssistant

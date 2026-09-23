@@ -1,7 +1,7 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: sensor.py
 # Description: Statistics sensor for House Voice Manager – counts TTS messages today
-#              v3.3.0: registers itself on entry.runtime_data instead of hass.data[DOMAIN].
+#              v3.3.1: registers itself on entry.runtime_data instead of hass.data[DOMAIN].
 
 from __future__ import annotations
 

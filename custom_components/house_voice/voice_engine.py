@@ -1,10 +1,10 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
 #              conditional playback, async TTS queue, event history log.
 #              v3.0.0: _execute_tts now uses native UltraTTS instead of script.ultra_tts.
-#              v3.3.0: conditions/sensor lookups moved to entry.runtime_data.
+#              v3.3.1: conditions/sensor lookups moved to entry.runtime_data.
 
 from __future__ import annotations
 

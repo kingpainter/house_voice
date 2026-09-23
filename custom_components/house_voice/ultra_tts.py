@@ -1,4 +1,4 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
 #              Handles volume set, tts.speak, dynamic delay, volume restore.

@@ -1,6 +1,6 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 #              Registers services, WebSocket API, sidebar panel and sensor.
-#              v3.3.0: migrated hass.data[DOMAIN] → entry.runtime_data (HA 2026 best practice).
+#              v3.3.1: migrated hass.data[DOMAIN] → entry.runtime_data (HA 2026 best practice).
 
 from __future__ import annotations
 

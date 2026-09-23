@@ -1,10 +1,10 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: panel.py
 # Description: Registers the House Voice Manager sidebar panel as a static
 #              HTTP path and custom web component in Home Assistant.
 #              The static HTTP path survives reloads (aiohttp router is permanent),
 #              so it is tracked at session level and only registered once per HA session.
-#              v3.3.0: panel_registered flag moved to entry.runtime_data.
+#              v3.3.1: panel_registered flag moved to entry.runtime_data.
 
 from __future__ import annotations
 

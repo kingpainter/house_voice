@@ -1,7 +1,7 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: diagnostics.py
 # Description: Diagnostics support for House Voice Manager
-#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
+#              v3.3.1: reads from entry.runtime_data instead of hass.data[DOMAIN].
 
 from __future__ import annotations
 

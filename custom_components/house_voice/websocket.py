@@ -1,10 +1,10 @@
-# VERSION = "3.3.0"
+# VERSION = "3.3.1"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
 #              test_event, get_groups, save_group, delete_group, get_history,
 #              get_conditions, save_condition, delete_condition.
-#              v3.3.0: reads from entry.runtime_data instead of hass.data[DOMAIN].
+#              v3.3.1: reads from entry.runtime_data instead of hass.data[DOMAIN].
 #              WS handlers only receive `hass`, so the single House Voice config
 #              entry is resolved via hass.config_entries.async_entries(DOMAIN).
 

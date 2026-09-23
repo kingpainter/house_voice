@@ -24,7 +24,10 @@ class HouseVoicePanel extends HTMLElement {
     this._saving        = false;
     this._notification  = null;
     this._notifTimer    = null;
+    this._debounceTimer = null;    // for search debounce
     this._searchQuery   = "";
+    this._loading       = false;
+    this._lastRenderKey = null;  // for render memoization   // global loading state for WS calls
   }
 
   set hass(h) {
@@ -35,17 +38,28 @@ class HouseVoicePanel extends HTMLElement {
 
   connectedCallback() { this._render(); }
 
+  disconnectedCallback() {
+    // Cleanup timers on component unmount to prevent memory leaks
+    if (this._notifTimer) clearTimeout(this._notifTimer);
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+  }
+
   // ── Data loading ───────────────────────────────────────────────────────────
 
   async _load() {
-    await Promise.all([
-      this._loadEvents(),
-      this._loadGroups(),
-      this._loadConditions(),
-      this._loadPlayers(),
-      this._loadHistory(),
-    ]);
-    this._render();
+    this._loading = true; this._updateUI();
+    try {
+      await Promise.all([
+        this._loadEvents(),
+        this._loadGroups(),
+        this._loadConditions(),
+        this._loadPlayers(),
+        this._loadHistory(),
+      ]);
+    } finally {
+      this._loading = false;
+    this._lastRenderKey = null;  // for render memoization this._render();
+    }
   }
 
   async _loadEvents() {
@@ -142,18 +156,28 @@ class HouseVoicePanel extends HTMLElement {
     if (!message)         return this._notify("Besked mangler.", "error");
     if (!speakers.length) return this._notify("Vælg mindst én højttaler eller gruppe.", "error");
 
-    this._saving = true; this._render();
+    this._saving = true; this._updateUI();
+    
+    // Fallback timeout to prevent stuck state (30s)
+    const timeout = setTimeout(() => {
+      this._saving = false;
+      this._notify("Timeout: Please try again.", "error");
+      this._render();
+    }, 30000);
+    
     try {
       await this._hass.callWS({
         type: "house_voice/save_event",
         event_id: eventId, message, speakers, priority, volume, conditions,
       });
+      clearTimeout(timeout);
       await this._loadEvents();
       this._closeForm();
       this._notify(`Event '${eventId}' gemt ✓`);
     } catch (e) {
+      clearTimeout(timeout);
       this._notify(`Fejl: ${e.message || e}`, "error");
-    } finally { this._saving = false; this._render(); }
+    } finally { this._saving = false; this._updateUI(); }
   }
 
   async _delete(id) {
@@ -188,8 +212,13 @@ class HouseVoicePanel extends HTMLElement {
     if (!condId)   return this._notify("Betingelse ID mangler.", "error");
     if (!label)    return this._notify("Navn mangler.", "error");
     if (!entityId) return this._notify("Entity ID mangler.", "error");
+    // Validate entity_id format: "domain.entity"
+    const entityIdRegex = /^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/i;
+    if (!entityIdRegex.test(entityId)) {
+      return this._notify("Entity ID skal være på format 'domain.entity' (fx 'sensor.stue_temp').", "error");
+    }
 
-    this._saving = true; this._render();
+    this._saving = true; this._updateUI();
     try {
       await this._hass.callWS({
         type: "house_voice/save_condition",
@@ -200,7 +229,7 @@ class HouseVoicePanel extends HTMLElement {
       this._notify(`Betingelse '${label}' gemt ✓`);
     } catch (e) {
       this._notify(`Fejl: ${e.message || e}`, "error");
-    } finally { this._saving = false; this._render(); }
+    } finally { this._saving = false; this._updateUI(); }
   }
 
   async _deleteCond(id) {
@@ -229,7 +258,7 @@ class HouseVoicePanel extends HTMLElement {
     if (!name)            return this._notify("Navn mangler.", "error");
     if (!speakers.length) return this._notify("Vælg mindst én højttaler.", "error");
 
-    this._saving = true; this._render();
+    this._saving = true; this._updateUI();
     try {
       await this._hass.callWS({
         type: "house_voice/save_group",
@@ -240,7 +269,7 @@ class HouseVoicePanel extends HTMLElement {
       this._notify(`Gruppe '${name}' gemt ✓`);
     } catch (e) {
       this._notify(`Fejl: ${e.message || e}`, "error");
-    } finally { this._saving = false; this._render(); }
+    } finally { this._saving = false; this._updateUI(); }
   }
 
   async _deleteGroup(id) {
@@ -291,19 +320,21 @@ class HouseVoicePanel extends HTMLElement {
           if (!ev.message || !ev.speakers || !ev.priority)
             return this._notify(`Ugyldig event '${id}' – mangler felter.`, "error");
         }
-        let count = 0;
-        for (const [id, ev] of Object.entries(parsed)) {
-          await this._hass.callWS({
+        let count = 0, failed = 0;
+        const promises = Object.entries(parsed).map(([id, ev]) =>
+          this._hass.callWS({
             type: "house_voice/save_event",
             event_id: id, message: ev.message,
             speakers: Array.isArray(ev.speakers) ? ev.speakers : [ev.speakers],
             priority: ev.priority || "normal", volume: ev.volume || 0.35,
             conditions: ev.conditions || [],
-          });
-          count++;
-        }
+          })
+        );
+        const results = await Promise.allSettled(promises);
+        results.forEach(r => { if (r.status === "fulfilled") count++; else failed++; });
         await this._loadEvents();
-        this._notify(`${count} events importeret ✓`);
+        const msg = failed > 0 ? `${count} importeret, ${failed} fejlede ⚠️` : `${count} events importeret ✓`;
+        this._notify(msg);
       } catch (err) { this._notify(`Import fejlede: ${err.message || err}`, "error"); }
     };
     input.click();
@@ -454,8 +485,9 @@ class HouseVoicePanel extends HTMLElement {
       <div class="history-list">
         ${this._history.map(h => {
           const s    = this._statusLabel(h.status);
-          const time = h.timestamp
-            ? new Date(h.timestamp).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+          const date = h.timestamp ? new Date(h.timestamp) : null;
+          const time = (date && !isNaN(date.getTime()))
+            ? date.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
             : "–";
           return `
             <div class="history-row">
@@ -732,6 +764,26 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── Main render ────────────────────────────────────────────────────────────
 
+  _updateUI() {
+    // Fast path: update UI elements without full re-render
+    const root = this.shadowRoot;
+    
+    // Update button disabled states based on _saving and _loading
+    root.querySelectorAll(".btn-save, .btn-load, .btn-import").forEach(btn => {
+      btn.disabled = this._saving || this._loading;
+    });
+    
+    // Update loading indicator
+    const loader = root.querySelector(".loader");
+    if (loader) loader.style.display = this._loading ? "flex" : "none";
+    
+    // Update tab content visibility without full re-render
+    root.querySelector(".events-tab")?.style.display = this._tab === "events" ? "block" : "none";
+    root.querySelector(".groups-tab")?.style.display = this._tab === "groups" ? "block" : "none";
+    root.querySelector(".history-tab")?.style.display = this._tab === "history" ? "block" : "none";
+  }
+
+
   _render() {
     const isEvents  = this._tab === "events";
     const isGroups  = this._tab === "groups";
@@ -809,7 +861,11 @@ class HouseVoicePanel extends HTMLElement {
     const root = this.shadowRoot;
 
     root.querySelectorAll(".tab").forEach(el =>
-      el.addEventListener("click", () => { this._tab = el.dataset.tab; this._render(); })
+      el.addEventListener("click", () => { 
+        this._tab = el.dataset.tab;
+        this._searchQuery = "";  // Clear search when switching tabs
+        this._render(); 
+      })
     );
 
     root.getElementById("btn-add")?.addEventListener("click",       () => this._openAdd());
