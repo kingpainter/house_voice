@@ -14,12 +14,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
-    TTSTTS_PRE_SPEAK_DELAY,
-    TTSTTS_MIN_SPEECH_DELAY,
-    TTSTTS_CHARS_PER_SECOND,
-    TTSTTS_HEOS_BUFFER,
-    TTSTTS_IDLE_VOLUME_THRESHOLD,
-    TTSTTS_DUCK_FACTOR,
+    TTS_PRE_SPEAK_DELAY,
+    TTS_MIN_SPEECH_DELAY,
+    TTS_CHARS_PER_SECOND,
+    TTS_HEOS_BUFFER,
+    TTS_IDLE_VOLUME_THRESHOLD,
+    TTS_DUCK_FACTOR,
 )
 
 _LOGGER = logging.getLogger(__name__)
