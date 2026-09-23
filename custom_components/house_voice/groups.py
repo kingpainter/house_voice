@@ -1,10 +1,12 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: groups.py
 # Description: Speaker group storage for House Voice Manager.
 #              Groups map a friendly name to a list of media_player entity IDs.
 #              Events can reference a group ID instead of individual speakers.
 
 from __future__ import annotations
+
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -37,7 +39,7 @@ class HouseVoiceGroups:
         """Persist current group data to disk."""
         await self.store.async_save(self.data)
 
-    async def add_group(self, group_id: str, group_data: dict) -> None:
+    async def add_group(self, group_id: str, group_data: dict[str, Any]) -> None:
         """Add or overwrite a speaker group and persist to disk."""
         self.data[group_id] = group_data
         await self.async_save()

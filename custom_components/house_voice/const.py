@@ -43,3 +43,22 @@ DEFAULT_TTS_ENTITY  = "tts.home_assistant_cloud"
 
 # Valid priorities
 PRIORITIES = ("info", "normal", "critical")
+
+# TTS Engine (UltraTTS)
+TTS_PRE_SPEAK_DELAY = 1.0                       # delay before speaking (speaker warmup)
+TTS_MIN_SPEECH_DELAY = 8.0                      # minimum playback wait time
+TTS_CHARS_PER_SECOND = 10.0                     # character-per-second estimate for duration
+TTS_HEOS_BUFFER = 3.0                           # extra buffer for HEOS/MA network latency
+TTS_IDLE_VOLUME_THRESHOLD = 0.25                # volume below which speaker is considered idle
+
+# TTS volume duck factors by priority
+TTS_DUCK_FACTOR: dict[str, float] = {
+    "critical": 0.0,
+    "normal":   0.25,
+    "info":     0.40,
+}
+
+# Voice Engine queue and history
+SPAM_FILTER_SECONDS = 30                        # minimum seconds between repeat events
+SPAM_CLEANUP_AGE = 3600                         # cleanup _last_spoken entries older than this
+HISTORY_MAX_ENTRIES = 50                        # max in-memory history log size

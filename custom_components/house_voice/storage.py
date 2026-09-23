@@ -1,4 +1,4 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: storage.py
 # Description: HA Storage API wrapper for House Voice Manager.
 #              Persists voice events, groups and conditions.

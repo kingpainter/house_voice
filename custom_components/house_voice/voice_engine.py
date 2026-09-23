@@ -13,8 +13,10 @@ import logging
 import time
 from collections import deque
 from datetime import datetime
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.template import Template, TemplateError
 from homeassistant.util import dt as dt_util
@@ -29,18 +31,15 @@ from .const import (
     DEFAULT_TTS_ENTITY,
     DEFAULT_VOLUME,
     DOMAIN,
+    SPAM_FILTER_SECONDS,
+    SPAM_CLEANUP_AGE,
+    HISTORY_MAX_ENTRIES,
 )
 from .ultra_tts import UltraTTS
 
 _LOGGER = logging.getLogger(__name__)
 
-SPAM_FILTER_SECONDS = 30
 
-# Clean up _last_spoken entries older than this (seconds)
-_CLEANUP_AGE = 3600
-
-# Max entries kept in in-memory history log
-_HISTORY_MAX = 50
 
 
 def _is_quiet_hours(start: int, end: int) -> bool:
@@ -59,14 +58,20 @@ def _is_quiet_hours(start: int, end: int) -> bool:
 class VoiceEngine:
     """Handles TTS routing, spam filtering, quiet hours, queue and template rendering."""
 
-    def __init__(self, hass, storage, groups, entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        storage: Any,
+        groups: Any,
+        entry: ConfigEntry
+    ) -> None:
         self.hass    = hass
         self.storage = storage
         self.groups  = groups
         self.entry   = entry
 
         self._last_spoken: dict[str, float] = {}
-        self._history: deque[dict] = deque(maxlen=_HISTORY_MAX)
+        self._history: deque[dict[str, Any]] = deque(maxlen=HISTORY_MAX_ENTRIES)
 
         # Async TTS queue – ensures announcements never overlap
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -110,11 +115,16 @@ class VoiceEngine:
                 # Propagate cancellation so stop() can join cleanly
                 self._queue.task_done()
                 raise
-            except Exception as err:  # noqa: BLE001
+            except (HomeAssistantError, ServiceValidationError, TemplateError, KeyError, ValueError) as err:
                 _LOGGER.error(
                     "House Voice: queue worker error for event '%s': %s",
                     job.get("event_id", "?"),
                     err,
+                )
+            except Exception as err:  # Unexpected error — log and continue
+                _LOGGER.exception(
+                    "House Voice: unexpected queue worker error for event '%s'",
+                    job.get("event_id", "?"),
                 )
             finally:
                 self._queue.task_done()
@@ -147,6 +157,9 @@ class VoiceEngine:
         Args:
             event_id:    The ID of the stored voice event to speak.
             bypass_spam: If True, skip the spam filter (used for test playback).
+        
+        Raises:
+            ServiceValidationError: If event not found, no speakers configured, or after conditions fail.
         """
         event = self.storage.get_event(event_id)
         if not event:
@@ -242,6 +255,9 @@ class VoiceEngine:
             speakers: List of media_player entity IDs or group references.
             priority: 'info', 'normal' or 'critical'.
             volume:   Volume level 0.05–1.0.
+        
+        Raises:
+            ServiceValidationError: If no speakers are resolved after group expansion.
         """
         quiet_start, quiet_end = self._get_quiet_hours()
         if _is_quiet_hours(quiet_start, quiet_end) and priority != "critical":
@@ -278,15 +294,25 @@ class VoiceEngine:
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _get_quiet_hours(self) -> tuple[int, int]:
-        """Read quiet hours from config entry options, falling back to defaults."""
+        """Read quiet hours from config entry options, falling back to defaults.
+        
+        Safely coerces options to int, logging and falling back to defaults on error.
+        """
         options = self.entry.options if self.entry else {}
-        start = options.get(CONF_QUIET_START, DEFAULT_QUIET_START)
-        end   = options.get(CONF_QUIET_END,   DEFAULT_QUIET_END)
-        return int(start), int(end)
+        try:
+            start = int(options.get(CONF_QUIET_START, DEFAULT_QUIET_START))
+            end = int(options.get(CONF_QUIET_END, DEFAULT_QUIET_END))
+            return start, end
+        except (TypeError, ValueError) as err:
+            _LOGGER.warning(
+                "House Voice: Failed to parse quiet hours from options: %s. Using defaults.",
+                err,
+            )
+            return int(DEFAULT_QUIET_START), int(DEFAULT_QUIET_END)
 
     def _cleanup_last_spoken(self, now: float) -> None:
         """Remove stale entries from _last_spoken to prevent unbounded growth."""
-        stale = [k for k, t in self._last_spoken.items() if (now - t) > _CLEANUP_AGE]
+        stale = [k for k, t in self._last_spoken.items() if (now - t) > SPAM_CLEANUP_AGE]
         for k in stale:
             del self._last_spoken[k]
 
@@ -308,9 +334,17 @@ class VoiceEngine:
         Returns True (allow playback) if ALL conditions are met.
         Returns True if any condition_id is not found in the library (fail-open).
         """
-        conditions_storage = getattr(self.entry, "runtime_data", None)
-        conditions_storage = getattr(conditions_storage, "conditions", None) if conditions_storage else None
-        if not conditions_storage:
+        # Safely access nested runtime_data.conditions with proper None-checks
+        runtime_data = getattr(self.entry, "runtime_data", None)
+        if runtime_data is None:
+            _LOGGER.warning(
+                "House Voice: Runtime data not available for '%s', defaulting to True",
+                event_id,
+            )
+            return True
+        
+        conditions_storage = getattr(runtime_data, "conditions", None)
+        if conditions_storage is None:
             _LOGGER.warning(
                 "House Voice: Conditions storage not available for '%s', defaulting to True",
                 event_id,
@@ -361,6 +395,7 @@ class VoiceEngine:
     ) -> None:
         """Add a TTS job to the queue. Critical priority jumps the queue.
 
+        Critical jobs are inserted at the front of the queue atomically.
         Also restarts the queue worker if it has died unexpectedly.
         """
         # Guard: restart worker if it died since last call
@@ -373,16 +408,30 @@ class VoiceEngine:
             "priority":   priority,
         }
         if priority == "critical":
-            # Build a new queue with the critical job first
+            # Build a new queue with the critical job first – atomic operation
             items: list[dict] = [job]
+            temp_items: list[dict] = []
+            
+            # Extract all pending items
             while not self._queue.empty():
                 try:
-                    items.append(self._queue.get_nowait())
+                    item = self._queue.get_nowait()
+                    temp_items.append(item)
                     self._queue.task_done()
                 except asyncio.QueueEmpty:
                     break
-            for item in items:
-                await self._queue.put(item)
+            
+            # Combine: critical job + pending items
+            items.extend(temp_items)
+            
+            # Re-queue atomically – if this fails, items were lost but queue is not corrupted
+            try:
+                for item in items:
+                    await self._queue.put(item)
+            except Exception as err:
+                _LOGGER.error("House Voice: Failed to re-queue critical job: %s", err)
+                # Critical job is lost but queue is still functional
+                raise
         else:
             await self._queue.put(job)
 
@@ -394,7 +443,11 @@ class VoiceEngine:
         priority: str,
         event_id: str,
     ) -> None:
-        """Execute a single TTS call via the native UltraTTS engine."""
+        """Execute a single TTS call via the native UltraTTS engine.
+        
+        Raises:
+            HomeAssistantError: If UltraTTS fails. A repair issue is raised on failure.
+        """
         try:
             options = self.entry.options if self.entry else {}
             tts_entity = options.get(CONF_TTS_ENTITY, DEFAULT_TTS_ENTITY)
@@ -427,9 +480,16 @@ class VoiceEngine:
     def _increment_sensor(self) -> None:
         """Increment the statistics sensor. Silently ignored on failure."""
         try:
-            runtime = getattr(self.entry, "runtime_data", None)
-            sensor = getattr(runtime, "sensor", None) if runtime else None
-            if sensor is not None:
-                sensor.increment()
-        except Exception as err:  # noqa: BLE001
+            runtime_data = getattr(self.entry, "runtime_data", None)
+            if runtime_data is None:
+                return
+            
+            sensor = getattr(runtime_data, "sensor", None)
+            if sensor is None:
+                return
+            
+            sensor.increment()
+        except (AttributeError, TypeError) as err:
             _LOGGER.warning("House Voice: Failed to increment sensor: %s", err)
+        except Exception as err:  # Unexpected error – log but don't fail
+            _LOGGER.exception("House Voice: Unexpected error incrementing sensor")

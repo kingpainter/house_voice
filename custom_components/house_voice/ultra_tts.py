@@ -1,4 +1,4 @@
-# VERSION = "3.2.0"
+# VERSION = "3.3.0"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
 #              Handles volume set, tts.speak, dynamic delay, volume restore.
@@ -13,21 +13,18 @@ import math
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from .const import (
+    TTSTTS_PRE_SPEAK_DELAY,
+    TTSTTS_MIN_SPEECH_DELAY,
+    TTSTTS_CHARS_PER_SECOND,
+    TTSTTS_HEOS_BUFFER,
+    TTSTTS_IDLE_VOLUME_THRESHOLD,
+    TTSTTS_DUCK_FACTOR,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 TTS_ENTITY = "tts.home_assistant_cloud"
-
-_PRE_SPEAK_DELAY = 1.0
-_MIN_SPEECH_DELAY = 8.0
-_CHARS_PER_SECOND = 10.0
-_HEOS_BUFFER = 3.0
-_IDLE_VOLUME_THRESHOLD = 0.25
-
-_DUCK_FACTOR: dict[str, float] = {
-    "critical": 0.0,
-    "normal":   0.25,
-    "info":     0.40,
-}
 
 
 class UltraTTS:
@@ -53,12 +50,12 @@ class UltraTTS:
         original_volumes = await self._get_volumes(speakers)
 
         # Duck only if music is actively playing; otherwise use configured volume
-        duck_factor = _DUCK_FACTOR.get(priority, _DUCK_FACTOR["normal"])
+        duck_factor = TTS_DUCK_FACTOR.get(priority, TTS_DUCK_FACTOR["normal"])
         tts_volumes = {}
         for sp in speakers:
             state = self.hass.states.get(sp)
             is_playing = state and state.state == "playing"
-            if is_playing and original_volumes[sp] > _IDLE_VOLUME_THRESHOLD:
+            if is_playing and original_volumes[sp] > TTS_IDLE_VOLUME_THRESHOLD:
                 tts_volumes[sp] = volume * duck_factor
             else:
                 tts_volumes[sp] = volume
@@ -82,7 +79,7 @@ class UltraTTS:
                 await self._set_volumes(list(sibling_volumes.keys()), sibling_volumes)
             _LOGGER.debug("UltraTTS: volume → %s (sibling=%s)", tts_volumes, sibling_map)
 
-            await asyncio.sleep(_PRE_SPEAK_DELAY)
+            await asyncio.sleep(TTS_PRE_SPEAK_DELAY)
 
             # Clear stale queue on HEOS sibling (or MA entity if no sibling)
             for sp in heos_like_speakers:
@@ -210,8 +207,8 @@ class UltraTTS:
     @staticmethod
     def _speech_delay(message: str, heos: bool = False) -> float:
         """Estimate playback duration. HEOS/MA adds buffer for network latency."""
-        estimated = math.ceil(len(message) / _CHARS_PER_SECOND)
-        delay = max(_MIN_SPEECH_DELAY, float(estimated))
+        estimated = math.ceil(len(message) / TTS_CHARS_PER_SECOND)
+        delay = max(TTS_MIN_SPEECH_DELAY, float(estimated))
         if heos:
-            delay += _HEOS_BUFFER
+            delay += TTS_HEOS_BUFFER
         return delay

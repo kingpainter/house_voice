@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -46,25 +47,25 @@ def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
     return entries[0] if entries else None
 
 
-def _get_storage(hass: HomeAssistant):
+def _get_storage(hass: HomeAssistant) -> Any | None:
     """Return storage instance or None."""
     entry = _get_entry(hass)
     return getattr(entry.runtime_data, "storage", None) if entry else None
 
 
-def _get_groups(hass: HomeAssistant):
+def _get_groups(hass: HomeAssistant) -> Any | None:
     """Return groups instance or None."""
     entry = _get_entry(hass)
     return getattr(entry.runtime_data, "groups", None) if entry else None
 
 
-def _get_conditions(hass: HomeAssistant):
+def _get_conditions(hass: HomeAssistant) -> Any | None:
     """Return conditions instance or None."""
     entry = _get_entry(hass)
     return getattr(entry.runtime_data, "conditions", None) if entry else None
 
 
-def _get_engine(hass: HomeAssistant):
+def _get_engine(hass: HomeAssistant) -> Any | None:
     """Return engine instance or None."""
     entry = _get_entry(hass)
     return getattr(entry.runtime_data, "engine", None) if entry else None
@@ -74,7 +75,11 @@ def _get_engine(hass: HomeAssistant):
 
 @websocket_api.websocket_command({"type": f"{DOMAIN}/get_events"})
 @callback
-def ws_get_events(hass: HomeAssistant, connection, msg) -> None:
+def ws_get_events(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Return all stored voice events."""
     storage = _get_storage(hass)
     if not storage:
@@ -82,7 +87,10 @@ def ws_get_events(hass: HomeAssistant, connection, msg) -> None:
         return
     try:
         connection.send_result(msg["id"], {"events": storage.data})
+    except (AttributeError, KeyError) as err:
+        connection.send_error(msg["id"], "invalid_data", f"Invalid event data: {err}")
     except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_events)")
         connection.send_error(msg["id"], "unknown_error", str(err))
 
 
@@ -90,7 +98,11 @@ def ws_get_events(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": f"{DOMAIN}/get_media_players"})
 @callback
-def ws_get_media_players(hass: HomeAssistant, connection, msg) -> None:
+def ws_get_media_players(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Return all media_player entities available in Home Assistant."""
     try:
         players = [
@@ -102,8 +114,12 @@ def ws_get_media_players(hass: HomeAssistant, connection, msg) -> None:
         ]
         players.sort(key=lambda x: x["friendly_name"].lower())
         connection.send_result(msg["id"], {"media_players": players})
+    except (AttributeError, TypeError) as err:
+        _LOGGER.warning("House Voice WS error (get_media_players): Invalid media_player state: %s", err)
+        connection.send_error(msg["id"], "invalid_data", f"Failed to retrieve media players: {err}")
     except Exception as err:
-        connection.send_error(msg["id"], "unknown_error", str(err))
+        _LOGGER.exception("House Voice WS error (get_media_players)")
+        connection.send_error(msg["id"], "unknown_error", "Failed to retrieve media players. Check logs.")
 
 
 # ── Save (add or update) a voice event ────────────────────────────────────────
@@ -118,7 +134,11 @@ def ws_get_media_players(hass: HomeAssistant, connection, msg) -> None:
     vol.Optional("conditions", default=[]):        list,
 })
 @websocket_api.async_response
-async def ws_save_event(hass: HomeAssistant, connection, msg) -> None:
+async def ws_save_event(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Save (create or update) a voice event."""
     storage = _get_storage(hass)
     if not storage:
@@ -168,7 +188,11 @@ async def ws_save_event(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("event_id"): str,
 })
 @websocket_api.async_response
-async def ws_delete_event(hass: HomeAssistant, connection, msg) -> None:
+async def ws_delete_event(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Delete a voice event by event_id."""
     storage = _get_storage(hass)
     if not storage:
@@ -196,7 +220,11 @@ async def ws_delete_event(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("event_id"): str,
 })
 @websocket_api.async_response
-async def ws_test_event(hass: HomeAssistant, connection, msg) -> None:
+async def ws_test_event(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Trigger a voice event immediately (test playback), bypassing spam filter."""
     engine = _get_engine(hass)
     if not engine:
@@ -220,7 +248,11 @@ async def ws_test_event(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": f"{DOMAIN}/get_groups"})
 @callback
-def ws_get_groups(hass: HomeAssistant, connection, msg) -> None:
+def ws_get_groups(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Return all stored speaker groups."""
     groups = _get_groups(hass)
     if not groups:
@@ -241,7 +273,11 @@ def ws_get_groups(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("speakers"):  vol.All(list, vol.Length(min=1)),
 })
 @websocket_api.async_response
-async def ws_save_group(hass: HomeAssistant, connection, msg) -> None:
+async def ws_save_group(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Save (create or update) a speaker group."""
     groups = _get_groups(hass)
     if not groups:
@@ -277,7 +313,11 @@ async def ws_save_group(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("group_id"):  str,
 })
 @websocket_api.async_response
-async def ws_delete_group(hass: HomeAssistant, connection, msg) -> None:
+async def ws_delete_group(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Delete a speaker group by group_id."""
     groups = _get_groups(hass)
     if not groups:
@@ -302,7 +342,11 @@ async def ws_delete_group(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": f"{DOMAIN}/get_history"})
 @callback
-def ws_get_history(hass: HomeAssistant, connection, msg) -> None:
+def ws_get_history(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Return the in-memory TTS history log (newest first)."""
     engine = _get_engine(hass)
     if not engine:
@@ -318,7 +362,11 @@ def ws_get_history(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.websocket_command({"type": f"{DOMAIN}/get_conditions"})
 @callback
-def ws_get_conditions(hass: HomeAssistant, connection, msg) -> None:
+def ws_get_conditions(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Return all stored conditions from the condition library."""
     conditions = _get_conditions(hass)
     if not conditions:
@@ -340,7 +388,11 @@ def ws_get_conditions(hass: HomeAssistant, connection, msg) -> None:
     vol.Optional("state", default="on"): str,
 })
 @websocket_api.async_response
-async def ws_save_condition(hass: HomeAssistant, connection, msg) -> None:
+async def ws_save_condition(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Save (create or update) a condition in the condition library."""
     conditions = _get_conditions(hass)
     if not conditions:
@@ -382,7 +434,11 @@ async def ws_save_condition(hass: HomeAssistant, connection, msg) -> None:
     vol.Required("condition_id"):    str,
 })
 @websocket_api.async_response
-async def ws_delete_condition(hass: HomeAssistant, connection, msg) -> None:
+async def ws_delete_condition(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
     """Delete a condition from the condition library."""
     conditions = _get_conditions(hass)
     if not conditions:
