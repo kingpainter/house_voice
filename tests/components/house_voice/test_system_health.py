@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.house_voice.const import DOMAIN, VERSION
+from custom_components.house_voice import HouseVoiceRuntimeData
 
 
 @pytest.mark.asyncio
@@ -12,7 +13,16 @@ async def test_system_health_info_returns_correct_fields(mock_hass, mock_storage
     from custom_components.house_voice.system_health import system_health_info
 
     mock_storage.data = {"ev1": sample_event, "ev2": sample_event}
-    mock_hass.data[DOMAIN] = {"storage": mock_storage}
+    
+    entry = MagicMock()
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=mock_storage,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=None,
+    )
+    mock_hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
     result = await system_health_info(mock_hass)
 
@@ -26,7 +36,15 @@ async def test_system_health_info_no_storage(mock_hass):
     """system_health_info handles missing storage gracefully."""
     from custom_components.house_voice.system_health import system_health_info
 
-    mock_hass.data[DOMAIN] = {"storage": None}
+    entry = MagicMock()
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=None,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=None,
+    )
+    mock_hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
     result = await system_health_info(mock_hass)
 

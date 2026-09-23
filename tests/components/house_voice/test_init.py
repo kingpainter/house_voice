@@ -12,6 +12,7 @@ from custom_components.house_voice.const import (
     SERVICE_DELETE,
     SERVICE_TEST,
 )
+from custom_components.house_voice import HouseVoiceRuntimeData
 
 
 @pytest.fixture
@@ -102,8 +103,8 @@ async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
         from custom_components.house_voice import async_setup_entry
         await async_setup_entry(mock_hass, mock_config_entry)
 
-    assert mock_hass.data[DOMAIN]["storage"] is mock_storage
-    assert mock_hass.data[DOMAIN]["engine"] is mock_engine
+    assert mock_config_entry.runtime_data.storage is mock_storage
+    assert mock_config_entry.runtime_data.engine is mock_engine
 
 
 @pytest.mark.asyncio
@@ -111,14 +112,14 @@ async def test_async_unload_entry_removes_services(mock_hass, mock_config_entry)
     """Unload removes all services and clears hass.data."""
     mock_engine = MagicMock()
     mock_engine.stop = AsyncMock()
-    mock_hass.data[DOMAIN] = {
-        "storage": MagicMock(),
-        "groups":  MagicMock(),
-        "conditions": MagicMock(),
-        "engine":  mock_engine,
-        "sensor":  None,
-        "_panel_registered": True,
-    }
+    mock_config_entry.runtime_data = HouseVoiceRuntimeData(
+        storage=MagicMock(),
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=mock_engine,
+        sensor=None,
+        panel_registered=True,
+    )
     mock_hass.services.async_remove = MagicMock()
 
     with patch("custom_components.house_voice.async_unregister_panel"), \

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.house_voice.const import DOMAIN, VERSION
+from custom_components.house_voice import HouseVoiceRuntimeData
 
 
 @pytest.mark.asyncio
@@ -16,9 +17,15 @@ async def test_diagnostics_returns_correct_fields(mock_hass, mock_storage, sampl
     sensor = MagicMock()
     sensor._count = 5
 
-    mock_hass.data[DOMAIN] = {"storage": mock_storage, "sensor": sensor}
-
     entry = MagicMock()
+    entry.options = {}
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=mock_storage,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=sensor,
+    )
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
         mock_dt.now.return_value = MagicMock(hour=14)  # Not quiet hours
@@ -37,11 +44,16 @@ async def test_diagnostics_quiet_hours_active(mock_hass, mock_storage):
     from custom_components.house_voice.diagnostics import async_get_config_entry_diagnostics
 
     mock_storage.data = {}
-    mock_hass.data[DOMAIN] = {"storage": mock_storage, "sensor": None,
-                               "groups": None, "engine": None}
 
     entry = MagicMock()
     entry.options = {}
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=mock_storage,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=None,
+    )
 
     with patch("custom_components.house_voice.voice_engine.dt_util") as mock_dt:
         mock_dt.now.return_value = MagicMock(hour=23)
@@ -55,8 +67,15 @@ async def test_diagnostics_handles_missing_storage(mock_hass):
     """Diagnostics handles missing storage gracefully."""
     from custom_components.house_voice.diagnostics import async_get_config_entry_diagnostics
 
-    mock_hass.data[DOMAIN] = {"storage": None, "sensor": None}
     entry = MagicMock()
+    entry.options = {}
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=None,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=None,
+    )
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
         mock_dt.now.return_value = MagicMock(hour=10)
@@ -73,8 +92,15 @@ async def test_diagnostics_handles_missing_sensor(mock_hass, mock_storage):
     from custom_components.house_voice.diagnostics import async_get_config_entry_diagnostics
 
     mock_storage.data = {}
-    mock_hass.data[DOMAIN] = {"storage": mock_storage, "sensor": None}
     entry = MagicMock()
+    entry.options = {}
+    entry.runtime_data = HouseVoiceRuntimeData(
+        storage=mock_storage,
+        groups=MagicMock(),
+        conditions=MagicMock(),
+        engine=MagicMock(),
+        sensor=None,
+    )
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
         mock_dt.now.return_value = MagicMock(hour=10)
