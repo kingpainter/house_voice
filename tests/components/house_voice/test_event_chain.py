@@ -1324,3 +1324,181 @@ async def test_parameter_transformation_without_context(mock_hass):
     assert result is True
     # When no context, original parameters used (transform skipped)
     assert received_params["greeting"] == "Hello"
+
+
+# ── Phase 5: Integration Test (Filter + Routing + Transformation) ───────────
+
+@pytest.mark.asyncio
+async def test_integration_filter_routing_transformation(mock_hass):
+    """Integration test: filter skips, then routing + transformation on match."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="default_speaker",
+        parameters={"message": "Hello"},
+        filter={"key": "room", "value": "living_room", "operator": "equals"},  # Filter for specific room
+        route_expression="{{ event.speaker }}",  # Route to dynamic speaker
+        transform={"message": "Announcing in {{ event.room }}: {{ event.text }}"},  # Transform message
+    )
+    
+    received_target = None
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_target, received_params
+        received_target = s.target
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Test 1: Filter doesn't match - should skip non-fatally
+    context_wrong_room = EventContext(
+        source="automation",
+        data={"room": "bedroom", "speaker": "bedroom_speaker", "text": "Wake up"},
+        metadata={},
+    )
+    
+    execution1 = ChainExecution(chain_id="test1", started_at=0)
+    result1 = await manager._execute_step_with_retry(step, execution1, context_wrong_room)
+    
+    assert result1 is True  # Non-fatal skip
+    assert received_target is None  # Handler never called
+    
+    # Test 2: Filter matches - should execute with routing + transformation
+    context_matching = EventContext(
+        source="automation",
+        data={"room": "living_room", "speaker": "living_room_speaker", "text": "Time to wake up"},
+        metadata={},
+    )
+    
+    execution2 = ChainExecution(chain_id="test2", started_at=0)
+    result2 = await manager._execute_step_with_retry(step, execution2, context_matching)
+    
+    assert result2 is True
+    assert received_target == "living_room_speaker"  # Routed to event.speaker
+    assert received_params["message"] == "Announcing in living_room: Time to wake up"  # Transformed
+
+
+@pytest.mark.asyncio
+async def test_integration_all_features_complex(mock_hass):
+    """Complex integration: filter + conditional routing + multi-param transformation."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="default",
+        parameters={
+            "message": "test",
+            "volume": 50,
+            "priority": "normal",
+        },
+        filter={
+            "key": "priority",
+            "value": "high",
+            "operator": "equals"
+        },
+        route_expression="{{ 'emergency' if event.priority == 'critical' else 'normal' }}",
+        transform={
+            "message": "[{{ event.priority|upper }}] {{ event.text }}",
+            "volume": 80,  # Literal value
+        }
+    )
+    
+    received_target = None
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_target, received_params
+        received_target = s.target
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    context = EventContext(
+        source="security",
+        data={"priority": "high", "text": "Intrusion detected"},
+        metadata={"severity": "critical"},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    assert result is True
+    assert received_target == "normal"  # Routed based on priority value
+    assert received_params["message"] == "[HIGH] Intrusion detected"
+    assert received_params["volume"] == 80
+    assert received_params["priority"] == "normal"  # Unchanged
+
+
+@pytest.mark.asyncio  
+async def test_backward_compatibility_no_new_features(mock_hass):
+    """Verify backward compatibility: steps without filter/route/transform still work."""
+    manager = EventChainManager(mock_hass)
+    
+    # Old-style step with no filter, routing, or transformation
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker1",
+        parameters={"message": "Hello World"},
+    )
+    
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_params
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Even with event context, should execute with original parameters
+    context = EventContext(
+        source="test",
+        data={"anything": "can_be_here"},
+        metadata={},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    assert result is True
+    assert received_params["message"] == "Hello World"  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_integration_filter_with_routing(mock_hass):
+    """Filter check happens before routing - filtered steps don't get routed."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="static_target",
+        filter={"key": "zone", "value": "office", "operator": "equals"},
+        route_expression="{{ event.custom_target }}",
+    )
+    
+    received_target = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_target
+        received_target = s.target
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Context that doesn't match filter
+    context = EventContext(
+        source="test",
+        data={"zone": "home", "custom_target": "routed_target"},
+        metadata={},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    # Should skip without even attempting routing
+    assert result is True
+    assert received_target is None
