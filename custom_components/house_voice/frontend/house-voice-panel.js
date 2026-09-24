@@ -58,7 +58,8 @@ class HouseVoicePanel extends HTMLElement {
       ]);
     } finally {
       this._loading = false;
-    this._lastRenderKey = null;  // for render memoization this._render();
+      this._lastRenderKey = null;  // for render memoization
+      this._render();
     }
   }
 
