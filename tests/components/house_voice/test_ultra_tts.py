@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.house_voice.ultra_tts import UltraTTS, _DUCK_FACTOR, _MIN_SPEECH_DELAY
+from custom_components.house_voice.const import TTS_DUCK_FACTOR, TTS_MIN_SPEECH_DELAY
+from custom_components.house_voice.ultra_tts import UltraTTS
+
+_DUCK_FACTOR = TTS_DUCK_FACTOR
+_MIN_SPEECH_DELAY = TTS_MIN_SPEECH_DELAY
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

@@ -281,4 +281,3 @@ async def test_ws_delete_condition_not_ready(mock_hass, mock_entry, make_runtime
 
     conn.send_error.assert_called_once()
     assert conn.send_error.call_args[0][1] == "not_ready"
-</content>

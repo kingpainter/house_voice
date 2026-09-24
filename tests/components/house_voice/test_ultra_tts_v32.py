@@ -192,4 +192,3 @@ async def test_custom_tts_entity_is_used():
     tts_calls = [c for c in hass.services.async_call.call_args_list if c[0][0] == "tts"]
     assert len(tts_calls) == 1
     assert tts_calls[0][1]["target"]["entity_id"] == "tts.piper"
-</content>
