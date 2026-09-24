@@ -167,11 +167,13 @@ async def test_event_chain_manager_execute_chain_fail_on_error(mock_hass):
             action=ChainActionType.ANNOUNCEMENT,
             target="event1",
             on_error="fail",
+            depends_on=[],  # Wave 1
         ),
         ChainStep(
             action=ChainActionType.DELAY,
             parameters={"duration_ms": 100},
             on_error="continue",
+            depends_on=["announcement_event1"],  # Wave 2 - waits for step 1 to fail
         ),
     ]
     

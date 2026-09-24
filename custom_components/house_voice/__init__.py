@@ -83,26 +83,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         conditions=conditions,
         engine=engine,
     )
-    # Initialize history database (Sprint 1)
-    history_db = HistoryDatabase(hass)
-    try:
-        await history_db.async_init()
-    except Exception as err:
-        _LOGGER.error("House Voice: failed to initialize history database: %s", err)
-        raise ConfigEntryNotReady(
-            f"House Voice: failed to initialize history database: {err}"
-        ) from err
-
-    # Initialize REST API (Sprint 1)
-    rest_api = None
-    try:
-        rest_api = await async_setup_rest_api(hass)
-    except Exception as err:
-        _LOGGER.error("House Voice: failed to start REST API: %s", err)
-        raise ConfigEntryNotReady(
-            f"House Voice: failed to start REST API: {err}"
-        ) from err
-    # ── Load sensor platform ───────────────────────────────────────────────
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # ── Register HA services ───────────────────────────────────────────────

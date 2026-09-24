@@ -205,16 +205,19 @@ async def test_e2e_chain_fail_on_error_stops_chain(mock_hass):
             action=ChainActionType.ANNOUNCEMENT,
             target="event_1",
             on_error="continue",
+            depends_on=[],  # Wave 1
         ),
         ChainStep(
             action=ChainActionType.DELAY,
             parameters={"duration_ms": 100},
             on_error="fail",  # This will stop the chain
+            depends_on=["announcement_event_1"],  # Wave 2 - waits for step 1
         ),
         ChainStep(
             action=ChainActionType.ANNOUNCEMENT,
             target="event_2",
             on_error="continue",
+            depends_on=["delay_generic"],  # Wave 3 - would wait for step 2 but it fails
         ),
     ]
     

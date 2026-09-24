@@ -46,7 +46,7 @@ async def test_register_panel_sets_flag(hass_with_panel_data, mock_entry):
          patch("os.path.getmtime", return_value=1234567890.0):
 
         from custom_components.house_voice.panel import async_register_panel
-        await async_register_panel(hass)
+        await async_register_panel(hass, mock_entry)
 
     assert mock_entry.runtime_data.panel_registered is True
 
@@ -64,16 +64,16 @@ async def test_static_path_registered_once_per_session(hass_with_panel_data, moc
          patch("os.path.getmtime", return_value=1234567890.0):
 
         # First setup
-        await async_register_panel(hass)
+        await async_register_panel(hass, mock_entry)
         assert hass.data.get(_SESSION_KEY_STATIC) is True
         assert hass.http.async_register_static_paths.call_count == 1
 
         # Simulate reload: unload clears _panel_registered but NOT _SESSION_KEY_STATIC
-        async_unregister_panel(hass)
+        async_unregister_panel(hass, mock_entry)
         mock_entry.runtime_data.panel_registered = False
 
         # Second setup after reload
-        await async_register_panel(hass)
+        await async_register_panel(hass, mock_entry)
 
     # Static path must still only have been registered once
     assert hass.http.async_register_static_paths.call_count == 1
@@ -88,7 +88,7 @@ async def test_register_panel_skips_if_already_registered(hass_with_panel_data, 
 
     with patch("custom_components.house_voice.panel.panel_custom.async_register_panel", new=AsyncMock()) as mock_reg:
         from custom_components.house_voice.panel import async_register_panel
-        await async_register_panel(hass)
+        await async_register_panel(hass, mock_entry)
 
     mock_reg.assert_not_called()
 
@@ -102,7 +102,7 @@ async def test_register_panel_handles_missing_js_file(hass_with_panel_data, mock
          patch("os.path.getmtime", side_effect=OSError("file not found")):
 
         from custom_components.house_voice.panel import async_register_panel
-        await async_register_panel(hass)
+        await async_register_panel(hass, mock_entry)
 
     assert mock_entry.runtime_data.panel_registered is True
 
@@ -116,7 +116,7 @@ async def test_unregister_does_not_clear_session_key(hass_with_panel_data, mock_
 
     with patch("custom_components.house_voice.panel.frontend.async_remove_panel"):
         from custom_components.house_voice.panel import async_unregister_panel
-        async_unregister_panel(hass)
+        async_unregister_panel(hass, mock_entry)
 
     assert mock_entry.runtime_data.panel_registered is False
     assert hass.data[_SESSION_KEY_STATIC] is True  # must survive unload
@@ -136,7 +136,7 @@ def test_unregister_panel_clears_flag(mock_hass, mock_entry):
 
     with patch("custom_components.house_voice.panel.frontend.async_remove_panel") as mock_remove:
         from custom_components.house_voice.panel import async_unregister_panel
-        async_unregister_panel(mock_hass)
+        async_unregister_panel(mock_hass, mock_entry)
 
     mock_remove.assert_called_once_with(mock_hass, DOMAIN)
     assert mock_entry.runtime_data.panel_registered is False
@@ -156,6 +156,6 @@ def test_unregister_panel_skips_if_not_registered(mock_hass, mock_entry):
 
     with patch("custom_components.house_voice.panel.frontend.async_remove_panel") as mock_remove:
         from custom_components.house_voice.panel import async_unregister_panel
-        async_unregister_panel(mock_hass)
+        async_unregister_panel(mock_hass, mock_entry)
 
     mock_remove.assert_not_called()
