@@ -779,9 +779,12 @@ class HouseVoicePanel extends HTMLElement {
     if (loader) loader.style.display = this._loading ? "flex" : "none";
     
     // Update tab content visibility without full re-render
-    root.querySelector(".events-tab")?.style.display = this._tab === "events" ? "block" : "none";
-    root.querySelector(".groups-tab")?.style.display = this._tab === "groups" ? "block" : "none";
-    root.querySelector(".history-tab")?.style.display = this._tab === "history" ? "block" : "none";
+    const eventsTab = root.querySelector(".events-tab");
+    if (eventsTab) eventsTab.style.display = this._tab === "events" ? "block" : "none";
+    const groupsTab = root.querySelector(".groups-tab");
+    if (groupsTab) groupsTab.style.display = this._tab === "groups" ? "block" : "none";
+    const historyTab = root.querySelector(".history-tab");
+    if (historyTab) historyTab.style.display = this._tab === "history" ? "block" : "none";
   }
 
 
