@@ -1,4 +1,4 @@
-# VERSION = "3.5.0"
+# VERSION = "3.5.1"
 # File: const.py
 # Description: Constants for House Voice Manager
 

@@ -1,3 +1,17 @@
+## [3.5.1] - 2026-09-24
+
+### Fixed
+- **Frontend**: Corrected syntax error in panel `_load()` finally block (indentation + method call placement)
+- **Frontend**: Resolved optional chaining with assignment operators in tab visibility updates (lines 782-784)
+  - Optional chaining (`?.`) operator does not support assignment in JavaScript
+  - Replaced with traditional null-check pattern for proper DOM manipulation
+
+### Details
+- Bug fix commit f5d8aae: Fixed indentation error where `this._render()` was placed in comment
+- Bug fix commit 50db63e: Resolved invalid optional chaining assignment pattern on tab display properties
+- All 218/220 tests passing (2 pre-existing mock assertion issues unrelated to these fixes)
+- Panel now loads without syntax errors in Home Assistant browser console
+
 ## [3.4.0] – 2026-09-24
 
 ### Added
