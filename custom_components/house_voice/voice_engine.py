@@ -1,10 +1,10 @@
-# VERSION = "3.3.1"
+# VERSION = "3.4.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
 #              conditional playback, async TTS queue, event history log.
 #              v3.0.0: _execute_tts now uses native UltraTTS instead of script.ultra_tts.
-#              v3.3.1: conditions/sensor lookups moved to entry.runtime_data.
+#              v3.4.0: conditions/sensor lookups moved to entry.runtime_data.
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ from .const import (
     HISTORY_MAX_ENTRIES,
 )
 from .ultra_tts import UltraTTS
+from .events.event_chain import EventChainManager, ChainActionType
+from .speaker_control.volume_controller import VolumeControllerV2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +78,69 @@ class VoiceEngine:
         # Async TTS queue – ensures announcements never overlap
         self._queue: asyncio.Queue = asyncio.Queue()
         self._queue_task: asyncio.Task | None = None
+
+        # Sprint 2: Event chain manager and volume controller
+        self.event_chain_manager = EventChainManager(hass)
+        self.volume_controller = VolumeControllerV2(hass)
+        self._setup_event_chain_handlers()
+
+    # ── Sprint 2: Event Chain Setup ────────────────────────────────────────────
+
+    def _setup_event_chain_handlers(self) -> None:
+        """Register event chain action handlers."""
+        async def handle_announcement(step, hass):
+            """Execute announcement action from event chain."""
+            from .events.event_chain import handle_announcement_action
+            return await handle_announcement_action(step, hass)
+
+        async def handle_volume_up(step, hass):
+            """Execute group volume up action from event chain."""
+            result = await self.volume_controller.increase_group_volume(
+                step.target or "default",
+                step.parameters.get("volume_step", 0.1)
+            )
+            return {
+                "success": result.success,
+                "group_id": result.group_id,
+                "action": result.action,
+                "attempted_count": result.attempted_count,
+                "final_volume": result.final_volume,
+                "fallback_strategy": result.fallback_strategy,
+            }
+
+        async def handle_volume_down(step, hass):
+            """Execute group volume down action from event chain."""
+            result = await self.volume_controller.decrease_group_volume(
+                step.target or "default",
+                step.parameters.get("volume_step", 0.1)
+            )
+            return {
+                "success": result.success,
+                "group_id": result.group_id,
+                "action": result.action,
+                "attempted_count": result.attempted_count,
+                "final_volume": result.final_volume,
+                "fallback_strategy": result.fallback_strategy,
+            }
+
+        async def handle_delay(step, hass):
+            """Execute delay action from event chain."""
+            from .events.event_chain import handle_delay_action
+            return await handle_delay_action(step, hass)
+
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.ANNOUNCEMENT, handle_announcement
+        )
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.GROUP_VOLUME_UP, handle_volume_up
+        )
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.GROUP_VOLUME_DOWN, handle_volume_down
+        )
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.DELAY, handle_delay
+        )
+        _LOGGER.debug("Event chain action handlers registered")
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
