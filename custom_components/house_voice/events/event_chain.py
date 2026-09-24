@@ -447,6 +447,38 @@ class EventChainManager:
                     step.target,
                 )
         
+        
+        # Initialize step_to_execute with resolved target
+        step_to_execute = step
+        if resolved_target != step.target:
+            import dataclasses
+            step_to_execute = dataclasses.replace(step, target=resolved_target)
+        
+        # Apply parameter transformations
+        if step_to_execute.transform and event_context:
+            transformed_params = apply_transformations(
+                step_to_execute.parameters,
+                step_to_execute.transform,
+                {
+                    "event": event_context.data,
+                    "metadata": event_context.metadata,
+                    "results": execution.step_results,
+                    "config": step_to_execute.parameters,
+                }
+            )
+            _LOGGER.debug(
+                "Transformed parameters for '%s': %s -> %s",
+                step_to_execute.step_id,
+                step_to_execute.transform,
+                transformed_params,
+            )
+            # Create new step with transformed parameters
+            import dataclasses
+            step_to_execute = dataclasses.replace(
+                step_to_execute,
+                parameters=transformed_params
+            )
+
         # Initialize circuit breaker state if not exists
         if step.step_id not in self.circuit_breaker_states:
             self.circuit_breaker_states[step.step_id] = CircuitBreakerState()
@@ -473,13 +505,7 @@ class EventChainManager:
                 if step.delay_ms:
                     await asyncio.sleep(step.delay_ms / 1000.0)
 
-                # Create step copy with resolved target for handler
-                step_to_execute = step
-                if resolved_target != step.target:
-                    # Create a shallow copy with resolved target
-                    import dataclasses
-                    step_to_execute = dataclasses.replace(step, target=resolved_target)
-                
+                # step_to_execute already prepared before retry loop
                 # Execute handler
                 result = await handler(step_to_execute, self.hass)
                 execution.step_results[step.step_id] = result

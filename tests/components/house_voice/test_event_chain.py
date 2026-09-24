@@ -1179,3 +1179,148 @@ async def test_dynamic_routing_without_context(mock_hass):
     assert result is True
     assert received_target == "static_speaker"
 
+
+
+# ── Phase 4: Parameter Transformation Tests ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_parameter_transformation_simple(mock_hass):
+    """Test simple parameter transformation with event data."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker1",
+        parameters={"message": "Hello"},
+        transform={"message": "Hello {{ event.name }}"},
+    )
+    
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_params
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    context = EventContext(
+        source="test",
+        data={"name": "Alice"},
+        metadata={},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    assert result is True
+    assert received_params["message"] == "Hello Alice"
+
+
+@pytest.mark.asyncio
+async def test_parameter_transformation_with_event_data(mock_hass):
+    """Test transformation using event data and config values."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker1",
+        parameters={
+            "room": "living_room",
+            "volume": 50,
+            "message": "Room {{ config.room }} volume {{ config.volume }}",
+        },
+        transform={
+            "message": "Room {{ config.room }} at {{ event.time }}",
+        },
+    )
+    
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_params
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    context = EventContext(
+        source="automation",
+        data={"time": "14:30"},
+        metadata={},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    assert result is True
+    assert received_params["message"] == "Room living_room at 14:30"
+    assert received_params["room"] == "living_room"  # Unchanged
+    assert received_params["volume"] == 50  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_parameter_transformation_fallback(mock_hass):
+    """Test fallback to original parameters on transformation error."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker1",
+        parameters={"original": "value"},
+        transform={"message": "Missing {{ undefined.key }}"},
+    )
+    
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_params
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    context = EventContext(
+        source="test",
+        data={"name": "Bob"},
+        metadata={},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    result = await manager._execute_step_with_retry(step, execution, context)
+    
+    # Should complete even with transformation error
+    assert result is True
+    # Original parameters should be preserved on error
+    assert received_params["original"] == "value"
+
+
+@pytest.mark.asyncio
+async def test_parameter_transformation_without_context(mock_hass):
+    """Test transformations skipped gracefully when context is None."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker1",
+        parameters={"greeting": "Hello"},
+        transform={"greeting": "Hello {{ event.name }}"},
+    )
+    
+    received_params = None
+    
+    async def mock_handler(s, hass):
+        nonlocal received_params
+        received_params = s.parameters
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    
+    # Execute without context
+    result = await manager._execute_step_with_retry(step, execution, event_context=None)
+    
+    assert result is True
+    # When no context, original parameters used (transform skipped)
+    assert received_params["greeting"] == "Hello"
