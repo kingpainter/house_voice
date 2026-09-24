@@ -147,6 +147,11 @@ class VoiceEngine:
             from .events.event_chain import handle_delay_action
             return await handle_delay_action(step, hass)
 
+        async def handle_webhook(step, hass):
+            """Execute webhook action from event chain."""
+            from .events.event_chain import handle_webhook_action
+            return await handle_webhook_action(step, hass)
+
         self.event_chain_manager.register_action_handler(
             ChainActionType.ANNOUNCEMENT, handle_announcement
         )
@@ -161,6 +166,9 @@ class VoiceEngine:
         )
         self.event_chain_manager.register_action_handler(
             ChainActionType.CONDITION_CHECK, handle_condition
+        )
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.WEBHOOK, handle_webhook
         )
         _LOGGER.debug("Event chain action handlers registered")
 

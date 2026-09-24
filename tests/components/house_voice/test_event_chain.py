@@ -363,3 +363,289 @@ async def test_step_without_condition_gate_executes(mock_hass):
     
     assert should_exec is True, "Steps without condition gates should execute"
     assert reason == "no_condition_gate"
+
+
+# ── Sprint 3 Task 3: Webhook Actions ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_webhook_successful_post(mock_hass) -> None:
+    """Test successful webhook POST request."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    
+    # Create proper async context manager mock for response
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.text = AsyncMock(return_value='{"status": "ok"}')
+    
+    # Create proper async context manager for session.post()
+    mock_post_context = AsyncMock()
+    mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_post_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Create session mock
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_context)
+    
+    # Create proper async context manager for ClientSession()
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    assert result["status"] == "completed"
+    assert result["response_status_code"] == 200
+    assert result["success"] is True
+    assert "webhook_url" in result
+    assert "execution_time_ms" in result
+
+
+@pytest.mark.asyncio
+async def test_webhook_with_custom_headers(mock_hass) -> None:
+    """Test webhook with custom headers."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    
+    mock_response = MagicMock()
+    mock_response.status = 201
+    mock_response.text = AsyncMock(return_value='')
+    
+    mock_post_context = AsyncMock()
+    mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_post_context.__aexit__ = AsyncMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_context)
+    
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+        parameters={
+            "headers": {
+                "Authorization": "Bearer token123",
+                "X-Custom-Header": "value",
+            }
+        },
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    assert result["status"] == "completed"
+    assert result["response_status_code"] == 201
+    
+    # Verify headers were passed
+    call_kwargs = mock_session.post.call_args[1]
+    assert "Authorization" in call_kwargs["headers"]
+    assert call_kwargs["headers"]["Authorization"] == "Bearer token123"
+
+
+@pytest.mark.asyncio
+async def test_webhook_timeout(mock_hass) -> None:
+    """Test webhook timeout handling."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(side_effect=asyncio.TimeoutError())
+    
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+        parameters={"timeout": 5},
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    assert result["status"] == "completed"
+    assert result["error"] == "timeout"
+    assert result["success"] is False
+    assert result["timeout_seconds"] == 5
+
+
+@pytest.mark.asyncio
+async def test_webhook_client_error(mock_hass) -> None:
+    """Test webhook client error handling."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    import aiohttp
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(side_effect=aiohttp.ClientError("Connection refused"))
+    
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    assert result["status"] == "completed"
+    assert result["error"] == "client_error"
+    assert result["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_webhook_missing_url(mock_hass) -> None:
+    """Test webhook with missing URL raises error."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target=None,
+    )
+    
+    with pytest.raises(ValueError, match="webhook action requires target"):
+        await handle_webhook_action(step, mock_hass)
+
+
+@pytest.mark.asyncio
+async def test_webhook_invalid_url_scheme(mock_hass) -> None:
+    """Test webhook with invalid URL scheme raises error."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="ftp://example.com/webhook",
+    )
+    
+    with pytest.raises(ValueError, match="Invalid webhook URL scheme"):
+        await handle_webhook_action(step, mock_hass)
+
+
+@pytest.mark.asyncio
+async def test_webhook_4xx_response(mock_hass) -> None:
+    """Test webhook with 4xx response is marked as unsuccessful."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    
+    mock_response = MagicMock()
+    mock_response.status = 400
+    mock_response.text = AsyncMock(return_value='{"error": "bad request"}')
+    
+    mock_post_context = AsyncMock()
+    mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_post_context.__aexit__ = AsyncMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_context)
+    
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    assert result["status"] == "completed"
+    assert result["response_status_code"] == 400
+    assert result["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_webhook_step_data_included(mock_hass) -> None:
+    """Test webhook includes step data in payload."""
+    from custom_components.house_voice.events.event_chain import (
+        ChainStep,
+        ChainActionType,
+        handle_webhook_action,
+    )
+    from unittest.mock import MagicMock
+    
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.text = AsyncMock(return_value='{}')
+    
+    mock_post_context = AsyncMock()
+    mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_post_context.__aexit__ = AsyncMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_context)
+    
+    mock_client_context = AsyncMock()
+    mock_client_context.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_client_context.__aexit__ = AsyncMock(return_value=None)
+    
+    step = ChainStep(
+        action=ChainActionType.WEBHOOK,
+        target="https://example.com/webhook",
+        parameters={"key": "value"},
+    )
+    
+    with patch('aiohttp.ClientSession') as mock_client:
+        mock_client.return_value = mock_client_context
+        
+        result = await handle_webhook_action(step, mock_hass)
+    
+    # Verify step data was in payload
+    call_kwargs = mock_session.post.call_args[1]
+    assert "json" in call_kwargs
+    payload = call_kwargs["json"]
+    assert "action" in payload
+    assert "step" in payload
+    assert payload["action"] == "webhook"

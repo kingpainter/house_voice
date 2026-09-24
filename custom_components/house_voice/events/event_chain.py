@@ -400,6 +400,124 @@ async def handle_condition_check_action(
         "status": "completed"
     }
 
+
+async def handle_webhook_action(
+    step: ChainStep,
+    hass: HomeAssistant,
+) -> dict[str, Any]:
+    """Execute a webhook action.
+    
+    Sends an HTTP POST request to a webhook URL with step and execution data.
+    
+    Parameters:
+    - webhook_url: URL to POST to (required, from step.target or parameters)
+    - timeout: Request timeout in seconds (default: 30)
+    - headers: Additional HTTP headers dict (default: {})
+    - include_step_data: Include full step data in payload (default: True)
+    
+    Returns:
+        dict with status, response_status_code, response_body/error, execution_time_ms
+    """
+    import aiohttp
+    import time
+    from urllib.parse import urlparse
+    
+    webhook_url = step.target or step.parameters.get("webhook_url")
+    if not webhook_url:
+        raise ValueError("webhook action requires target (webhook_url) or parameters.webhook_url")
+    
+    # Validate URL format
+    try:
+        parsed = urlparse(webhook_url)
+        if not parsed.scheme in ("http", "https"):
+            raise ValueError(f"Invalid webhook URL scheme: {parsed.scheme}")
+    except Exception as e:
+        raise ValueError(f"Invalid webhook URL: {str(e)}")
+    
+    timeout = step.parameters.get("timeout", 30)
+    headers = step.parameters.get("headers", {})
+    include_step_data = step.parameters.get("include_step_data", True)
+    
+    # Prepare payload
+    payload = {
+        "action": step.action.value,
+        "timestamp": asyncio.get_event_loop().time(),
+    }
+    
+    if include_step_data:
+        payload["step"] = {
+            "action": step.action.value,
+            "target": step.target,
+            "parameters": step.parameters,
+            "on_error": step.on_error,
+            "max_retries": step.max_retries,
+        }
+    
+    # Set default content-type if not provided
+    if "Content-Type" not in headers:
+        headers["Content-Type"] = "application/json"
+    
+    start_time = time.time()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                webhook_url,
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+                ssl=True,
+            ) as response:
+                response_text = await response.text()
+                execution_time_ms = (time.time() - start_time) * 1000
+                
+                _LOGGER.debug(
+                    f"Webhook {webhook_url} returned {response.status} in {execution_time_ms:.0f}ms"
+                )
+                
+                return {
+                    "status": "completed",
+                    "webhook_url": webhook_url,
+                    "response_status_code": response.status,
+                    "response_body": response_text[:500],  # Limit response size in logs
+                    "execution_time_ms": execution_time_ms,
+                    "success": 200 <= response.status < 300,
+                }
+    except asyncio.TimeoutError:
+        execution_time_ms = (time.time() - start_time) * 1000
+        _LOGGER.error(f"Webhook timeout after {timeout}s: {webhook_url}")
+        return {
+            "status": "completed",
+            "webhook_url": webhook_url,
+            "error": "timeout",
+            "timeout_seconds": timeout,
+            "execution_time_ms": execution_time_ms,
+            "success": False,
+        }
+    except aiohttp.ClientError as e:
+        execution_time_ms = (time.time() - start_time) * 1000
+        error_msg = str(e)
+        _LOGGER.error(f"Webhook client error: {error_msg}")
+        return {
+            "status": "completed",
+            "webhook_url": webhook_url,
+            "error": "client_error",
+            "error_details": error_msg[:200],
+            "execution_time_ms": execution_time_ms,
+            "success": False,
+        }
+    except Exception as e:
+        execution_time_ms = (time.time() - start_time) * 1000
+        error_msg = str(e)
+        _LOGGER.error(f"Webhook unexpected error: {error_msg}", exc_info=True)
+        return {
+            "status": "completed",
+            "webhook_url": webhook_url,
+            "error": "unexpected_error",
+            "error_details": error_msg[:200],
+            "execution_time_ms": execution_time_ms,
+            "success": False,
+        }
+
 # ── Example chain builder ───────────────────────────────────────────────
 
 def create_announcement_chain(
