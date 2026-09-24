@@ -1,4 +1,4 @@
-# VERSION = "3.4.0"
+# VERSION = "3.5.0"
 # File: speaker_control/fallback_strategies.py
 # Description: Fallback strategies for volume control when primary methods fail
 

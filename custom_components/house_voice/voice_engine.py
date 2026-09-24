@@ -1,4 +1,4 @@
-# VERSION = "3.4.0"
+# VERSION = "3.5.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
@@ -215,6 +215,70 @@ class VoiceEngine:
             self._queue_task = self.hass.loop.create_task(self._queue_worker())
 
     # ── Public API ─────────────────────────────────────────────────────────────
+
+    async def execute_announcement_chain(
+        self,
+        event_id: str,
+        speakers: list[str],
+        volume_increase: float = 0.1,
+    ) -> None:
+        """Execute an announcement with automatic volume adjustment chain.
+        
+        Creates and executes an event chain that:
+        1. Increases volume by volume_increase
+        2. Plays the announcement
+        3. Delays 2 seconds
+        4. Decreases volume by volume_increase
+        
+        Failures in volume adjustment do not block the announcement.
+        
+        Args:
+            event_id: The ID of the stored voice event
+            speakers: List of speaker entity IDs or group references
+            volume_increase: Amount to increase volume (default 0.1)
+        
+        Raises:
+            ServiceValidationError: If event not found or speakers invalid
+        """
+        from .events.event_chain import create_announcement_chain
+        
+        # Validate event exists
+        event = self.storage.get_event(event_id)
+        if not event:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="event_not_found",
+                translation_placeholders={"event_id": event_id},
+            )
+        
+        # Validate speakers
+        resolved_speakers = self.groups.resolve_speakers(speakers)
+        if not resolved_speakers:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_speakers",
+                translation_placeholders={"event_id": event_id},
+            )
+        
+        # For now, use the first speaker group (future: support multiple)
+        group_id = resolved_speakers[0] if resolved_speakers else "default"
+        
+        # Create and register the chain
+        chain_id = f"announcement_chain_{event_id}_{int(time.time())}"
+        steps = create_announcement_chain(event_id, group_id, volume_increase)
+        
+        await self.event_chain_manager.register_chain(chain_id, steps)
+        
+        # Execute the chain
+        execution = await self.event_chain_manager.execute_chain(chain_id)
+        
+        # Log chain execution
+        _LOGGER.info(
+            "Announcement chain '%s' executed: %d succeeded, %d failed",
+            chain_id,
+            len(execution.completed_steps),
+            len(execution.failed_steps),
+        )
 
     async def say(self, event_id: str, bypass_spam: bool = False) -> None:
         """Speak a stored voice event by ID.

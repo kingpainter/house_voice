@@ -1,4 +1,4 @@
-# VERSION = "3.4.0"
+# VERSION = "3.5.0"
 # File: events/event_chain.py
 # Description: Event chain execution engine for House Voice Manager Sprint 2
 #              DAG-based chain execution with fail-open error handling
@@ -12,6 +12,8 @@ from enum import Enum
 from typing import Any, Callable, Optional
 
 from homeassistant.core import HomeAssistant
+
+from .event_chain_parallel import DependencyGraph, ParallelExecutor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class EventChainManager:
             _LOGGER.info("Event chain registered: %s (%d steps)", chain_id, len(steps))
 
     async def execute_chain(self, chain_id: str) -> ChainExecution:
-        """Execute an event chain and return execution state."""
+        """Execute an event chain with parallel step support (v3.5.0)."""
         if chain_id not in self.chains:
             raise ValueError(f"Chain not found: {chain_id}")
 
@@ -99,48 +101,43 @@ class EventChainManager:
         self.executions[chain_id] = execution
 
         try:
-            # Build dependency graph
-            step_map = {step.step_id: step for step in steps}
+            # Build dependency graph from steps
+            graph = DependencyGraph(steps)
 
-            # Execute steps in order (with dependency resolution)
-            for step in steps:
-                # Check if all dependencies are completed
-                if step.depends_on:
-                    missing_deps = [
-                        dep for dep in step.depends_on
-                        if dep not in execution.completed_steps
-                    ]
-                    if missing_deps:
-                        _LOGGER.warning(
-                            "Chain %s: skipping step %s (unmet deps: %s)",
-                            chain_id,
-                            step.step_id,
-                            missing_deps,
-                        )
-                        continue
-
-                # Execute step with retry logic
-                success = await self._execute_step_with_retry(
-                    step,
-                    execution,
+            # Check for circular dependencies
+            if graph.has_cycles():
+                raise ValueError(
+                    f"Chain {chain_id} has circular dependencies — deadlock risk"
                 )
 
-                if not success and step.on_error == "fail":
-                    _LOGGER.error(
-                        "Chain %s: stopping due to failed step: %s",
-                        chain_id,
-                        step.step_id,
-                    )
-                    execution.failed_steps.add(step.step_id)
-                    break
+            # Get execution waves (independent steps that can run in parallel)
+            waves = graph.get_execution_waves()
+            _LOGGER.info(
+                "Chain %s prepared: %d steps in %d parallel waves",
+                chain_id,
+                len(steps),
+                len(waves),
+            )
+
+            # Execute all waves (each wave runs steps in parallel)
+            executor = ParallelExecutor()
+            steps_by_id = {step.step_id: step for step in steps}
+
+            await executor.execute_all_waves(
+                waves,
+                steps_by_id,
+                self._execute_step_with_retry,
+                execution,
+            )
 
         finally:
             execution.is_complete = True
             _LOGGER.info(
-                "Chain %s execution complete: %d succeeded, %d failed",
+                "Chain %s execution complete: %d succeeded, %d failed, %d waves",
                 chain_id,
                 len(execution.completed_steps),
                 len(execution.failed_steps),
+                len(waves) if 'waves' in locals() else 0,
             )
 
         return execution

@@ -1,4 +1,4 @@
-# VERSION = "3.4.0"
+# VERSION = "3.5.0"
 # File: speaker_control/volume_controller.py
 # Description: Volume controller with 3-retry exponential backoff and fallback strategies
 
