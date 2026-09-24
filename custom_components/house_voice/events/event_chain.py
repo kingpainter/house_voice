@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional
@@ -102,6 +104,61 @@ class CircuitBreakerState:
         self.is_open = False
 
 
+
+@dataclass
+class EventFilter:
+    """Single filter condition for event routing."""
+    key: str
+    value: Any
+    operator: str = "equals"  # equals | contains | regex | gt | lt | ne
+    
+    def matches(self, event_data: dict) -> bool:
+        """Evaluate filter against event data.
+        
+        Returns True if condition matches, False otherwise.
+        """
+        if not isinstance(event_data, dict):
+            return False
+        
+        if self.key not in event_data:
+            return False
+        
+        event_value = event_data[self.key]
+        
+        if self.operator == "equals":
+            return event_value == self.value
+        elif self.operator == "ne":  # not equal
+            return event_value != self.value
+        elif self.operator == "contains":
+            return str(self.value) in str(event_value)
+        elif self.operator == "regex":
+            try:
+                return bool(re.search(str(self.value), str(event_value)))
+            except re.error:
+                return False
+        elif self.operator == "gt":
+            try:
+                return float(event_value) > float(self.value)
+            except (ValueError, TypeError):
+                return False
+        elif self.operator == "lt":
+            try:
+                return float(event_value) < float(self.value)
+            except (ValueError, TypeError):
+                return False
+        
+        return False
+
+
+@dataclass
+class EventContext:
+    """Event data passed through chain execution."""
+    source: str  # Event source (mqtt, service, automation, etc)
+    data: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=lambda: time.time())
+
+
 @dataclass
 class ChainStep:
     """Single step in an event chain."""
@@ -120,6 +177,11 @@ class ChainStep:
     
     # ── Sprint 4 Task: Advanced Retry Strategies ───────────────────────────────
     retry_config: 'RetryConfig' = field(default_factory=RetryConfig)
+    
+    # ── Sprint 5 Task: Event Routing & Transformation ────────────────────────
+    filter: Optional[dict] = None  # Event filter conditions: {"key": "value", "operator": "equals|contains|regex|gt|lt"}
+    route_expression: Optional[str] = None  # Jinja2 template for dynamic target: "{{ 'room_a' if event.room == 'main' else 'room_b' }}"
+    transform: Optional[dict] = None  # Parameter transformations: {"param": "{{ expression }}"}
 
     @property
     def step_id(self) -> str:
@@ -137,6 +199,104 @@ class ChainExecution:
     completed_steps: set[str] = field(default_factory=set)
     failed_steps: set[str] = field(default_factory=set)
     is_complete: bool = False
+
+
+# ── Sprint 5: Utility Functions for Event Routing & Transformation ───────────
+
+def evaluate_event_filter(filter_dict: Optional[dict], event_data: dict) -> bool:
+    """Evaluate event filters against event data.
+    
+    Filter dict format: {"key": "value", "operator": "equals"}
+    or list of conditions with AND-logic.
+    
+    Returns True if all filters match, False otherwise.
+    """
+    if not filter_dict:
+        return True  # No filter = always match
+    
+    if isinstance(filter_dict, dict):
+        # Single filter condition
+        try:
+            event_filter = EventFilter(
+                key=filter_dict.get("key", ""),
+                value=filter_dict.get("value"),
+                operator=filter_dict.get("operator", "equals"),
+            )
+            return event_filter.matches(event_data)
+        except (KeyError, TypeError):
+            return False
+    elif isinstance(filter_dict, list):
+        # Multiple filters (AND-logic)
+        for f in filter_dict:
+            if not evaluate_event_filter(f, event_data):
+                return False
+        return True
+    
+    return True
+
+
+def evaluate_expression(expression: str, context: dict) -> str:
+    """Evaluate a simple template expression.
+    
+    Supports basic {{ key }} substitution from context.
+    For now, use simple string substitution instead of Jinja2.
+    
+    Example: "{{ event.room }}" with context {"event": {"room": "living_room"}}
+    """
+    if not expression:
+        return ""
+    
+    try:
+        # Simple {{ }} substitution
+        import re
+        pattern = r'\{\{\s*(\w+(?:\.\w+)*)\s*\}\}'
+        
+        def replace_expr(match):
+            key_path = match.group(1).split('.')
+            value = context
+            for key in key_path:
+                if isinstance(value, dict):
+                    value = value.get(key)
+                else:
+                    return match.group(0)  # Return original if can't resolve
+            return str(value) if value is not None else ""
+        
+        return re.sub(pattern, replace_expr, expression)
+    except Exception as err:
+        _LOGGER.warning("Expression evaluation failed: %s", err)
+        return expression
+
+
+def apply_transformations(
+    parameters: dict[str, Any],
+    transform_dict: Optional[dict],
+    context: dict,
+) -> dict[str, Any]:
+    """Apply parameter transformations based on context.
+    
+    Transform dict format: {"param_key": "{{ expression }}"}
+    
+    Returns transformed parameters dict.
+    """
+    if not transform_dict:
+        return parameters
+    
+    transformed = parameters.copy()
+    
+    for key, expression in transform_dict.items():
+        if isinstance(expression, str):
+            try:
+                transformed[key] = evaluate_expression(expression, context)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Transformation failed for %s: %s, using original",
+                    key,
+                    err,
+                )
+        else:
+            transformed[key] = expression
+    
+    return transformed
 
 
 class EventChainManager:

@@ -787,3 +787,135 @@ async def test_circuit_breaker_opens_and_resets(mock_hass):
     assert should_skip is False
     assert cb.is_open is False
     assert cb.failure_count == 0
+
+
+# ── Sprint 5: Event Routing & Transformation Tests ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_event_filter_match_single(mock_hass):
+    """Test event filter matches single condition."""
+    from custom_components.house_voice.events.event_chain import EventFilter
+    
+    event_filter = EventFilter(
+        key="source",
+        value="mqtt",
+        operator="equals",
+    )
+    
+    event_data = {"source": "mqtt", "device": "sensor1"}
+    assert event_filter.matches(event_data) is True
+    
+    event_data_mismatch = {"source": "service", "device": "sensor1"}
+    assert event_filter.matches(event_data_mismatch) is False
+
+
+@pytest.mark.asyncio
+async def test_event_filter_mismatch(mock_hass):
+    """Test event filter doesn't match."""
+    from custom_components.house_voice.events.event_chain import EventFilter
+    
+    event_filter = EventFilter(
+        key="device_type",
+        value="sensor",
+        operator="equals",
+    )
+    
+    # Missing key
+    assert event_filter.matches({"other_field": "value"}) is False
+    
+    # Different value
+    assert event_filter.matches({"device_type": "switch"}) is False
+
+
+@pytest.mark.asyncio
+async def test_event_filter_contains(mock_hass):
+    """Test event filter with contains operator."""
+    from custom_components.house_voice.events.event_chain import EventFilter
+    
+    event_filter = EventFilter(
+        key="message",
+        value="error",
+        operator="contains",
+    )
+    
+    assert event_filter.matches({"message": "An error occurred"}) is True
+    assert event_filter.matches({"message": "Success"}) is False
+
+
+@pytest.mark.asyncio
+async def test_event_filter_regex(mock_hass):
+    """Test event filter with regex operator."""
+    from custom_components.house_voice.events.event_chain import EventFilter
+    
+    event_filter = EventFilter(
+        key="entity_id",
+        value=r"sensor\..*_temperature",
+        operator="regex",
+    )
+    
+    assert event_filter.matches({"entity_id": "sensor.living_room_temperature"}) is True
+    assert event_filter.matches({"entity_id": "sensor.humidity"}) is False
+
+
+@pytest.mark.asyncio
+async def test_evaluate_event_filter_utility(mock_hass):
+    """Test evaluate_event_filter utility function."""
+    from custom_components.house_voice.events.event_chain import evaluate_event_filter
+    
+    # No filter = always match
+    assert evaluate_event_filter(None, {}) is True
+    
+    # Single filter dict
+    filter_dict = {"key": "source", "value": "mqtt", "operator": "equals"}
+    assert evaluate_event_filter(filter_dict, {"source": "mqtt"}) is True
+    assert evaluate_event_filter(filter_dict, {"source": "service"}) is False
+    
+    # Multiple filters (AND-logic)
+    filters = [
+        {"key": "source", "value": "mqtt", "operator": "equals"},
+        {"key": "device_type", "value": "sensor", "operator": "equals"},
+    ]
+    assert evaluate_event_filter(filters, {"source": "mqtt", "device_type": "sensor"}) is True
+    assert evaluate_event_filter(filters, {"source": "mqtt", "device_type": "switch"}) is False
+
+
+@pytest.mark.asyncio
+async def test_evaluate_expression_simple(mock_hass):
+    """Test simple expression evaluation."""
+    from custom_components.house_voice.events.event_chain import evaluate_expression
+    
+    # Simple substitution
+    context = {"event": {"room": "living_room"}}
+    result = evaluate_expression("{{ event.room }}", context)
+    assert result == "living_room"
+    
+    # Multiple substitutions
+    context = {"name": "John", "room": "kitchen"}
+    result = evaluate_expression("Hello {{ name }} in {{ room }}", context)
+    assert "John" in result
+    assert "kitchen" in result
+    
+    # Missing key (returns original)
+    context = {"name": "John"}
+    result = evaluate_expression("Hello {{ missing_key }}", context)
+    assert "missing_key" in result or result == "Hello "
+
+
+@pytest.mark.asyncio
+async def test_apply_transformations(mock_hass):
+    """Test parameter transformation."""
+    from custom_components.house_voice.events.event_chain import apply_transformations
+    
+    parameters = {"message": "Default", "volume": "50"}
+    
+    # No transform = return as-is
+    result = apply_transformations(parameters, None, {})
+    assert result == parameters
+    
+    # Simple transform
+    transform = {"message": "{{ event.custom_message }}"}
+    context = {"event": {"custom_message": "Hello World"}}
+    result = apply_transformations(parameters, transform, context)
+    assert result["message"] == "Hello World"
+    assert result["volume"] == "50"  # Unchanged
+
