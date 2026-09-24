@@ -17,7 +17,21 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError
+
+try:
+    from homeassistant.exceptions import ServiceValidationError
+except ImportError:
+    # Fallback for older HA versions
+    from homeassistant.exceptions import HomeAssistantError
+    
+    class ServiceValidationError(HomeAssistantError):
+        """Service validation error that accepts keyword arguments."""
+        def __init__(self, message=None, *, key=None, translation_domain=None, **kwargs):
+            super().__init__(message or "Service validation error")
+            self.translation_key = key
+            self.translation_domain = translation_domain
+            self._extra_kwargs = kwargs
 from homeassistant.helpers.template import Template, TemplateError
 from homeassistant.util import dt as dt_util
 
@@ -88,6 +102,11 @@ class VoiceEngine:
 
     def _setup_event_chain_handlers(self) -> None:
         """Register event chain action handlers."""
+        async def handle_condition(step, hass):
+            """Handle condition check action from event chain."""
+            from .events.event_chain import handle_condition_check_action
+            return await handle_condition_check_action(step, hass)
+
         async def handle_announcement(step, hass):
             """Execute announcement action from event chain."""
             from .events.event_chain import handle_announcement_action
@@ -140,9 +159,11 @@ class VoiceEngine:
         self.event_chain_manager.register_action_handler(
             ChainActionType.DELAY, handle_delay
         )
+        self.event_chain_manager.register_action_handler(
+            ChainActionType.CONDITION_CHECK, handle_condition
+        )
         _LOGGER.debug("Event chain action handlers registered")
 
-    # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     def start(self) -> None:
         """Start the background queue worker."""

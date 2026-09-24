@@ -42,7 +42,11 @@ async def test_say_calls_ultra_tts(mock_engine, mock_storage, sample_event):
 @pytest.mark.asyncio
 async def test_say_unknown_event_raises(mock_engine):
     """say() raises ServiceValidationError when event_id does not exist."""
-    from homeassistant.exceptions import ServiceValidationError
+    try:
+        from homeassistant.exceptions import ServiceValidationError
+    except ImportError:
+        from homeassistant.exceptions import HomeAssistantError
+        ServiceValidationError = HomeAssistantError
     with pytest.raises(ServiceValidationError):
         await mock_engine.say("does_not_exist")
 

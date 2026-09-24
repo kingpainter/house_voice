@@ -17,7 +17,12 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ServiceValidationError
+try:
+    from homeassistant.exceptions import ServiceValidationError
+except ImportError:
+    # Fallback for older HA versions
+    from homeassistant.exceptions import HomeAssistantError
+    ServiceValidationError = HomeAssistantError
 
 from .const import DOMAIN, PRIORITIES
 

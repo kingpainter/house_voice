@@ -47,7 +47,11 @@ async def test_say_calls_ultra_tts(mock_engine, mock_storage, sample_event):
 @pytest.mark.asyncio
 async def test_say_unknown_event_raises(mock_engine):
     """say() raises ServiceValidationError when event_id does not exist."""
-    from homeassistant.exceptions import ServiceValidationError
+    try:
+        from homeassistant.exceptions import ServiceValidationError
+    except ImportError:
+        from homeassistant.exceptions import HomeAssistantError
+        ServiceValidationError = HomeAssistantError
     with pytest.raises(ServiceValidationError):
         await mock_engine.say("does_not_exist")
 
@@ -55,7 +59,11 @@ async def test_say_unknown_event_raises(mock_engine):
 @pytest.mark.asyncio
 async def test_say_no_speakers_raises(mock_engine, mock_storage):
     """say() raises ServiceValidationError when speakers list is empty."""
-    from homeassistant.exceptions import ServiceValidationError
+    try:
+        from homeassistant.exceptions import ServiceValidationError
+    except ImportError:
+        from homeassistant.exceptions import HomeAssistantError
+        ServiceValidationError = HomeAssistantError
     mock_storage.data["ev1"] = {
         "message": "Test", "speakers": [], "priority": "normal", "volume": 0.35, "conditions": [],
     }
@@ -262,7 +270,11 @@ async def test_say_text_critical_bypasses_quiet_hours(mock_engine):
 @pytest.mark.asyncio
 async def test_say_text_no_speakers_raises(mock_engine):
     """say_text() raises ServiceValidationError when resolved speakers is empty."""
-    from homeassistant.exceptions import ServiceValidationError
+    try:
+        from homeassistant.exceptions import ServiceValidationError
+    except ImportError:
+        from homeassistant.exceptions import HomeAssistantError
+        ServiceValidationError = HomeAssistantError
 
     with patch("custom_components.house_voice.voice_engine._is_quiet_hours", return_value=False):
         with pytest.raises(ServiceValidationError):

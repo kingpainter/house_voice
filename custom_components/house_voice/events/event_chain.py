@@ -260,6 +260,104 @@ async def handle_delay_action(
     return {"duration_ms": delay_ms, "status": "completed"}
 
 
+
+
+async def handle_condition_check_action(
+    step: ChainStep,
+    hass: HomeAssistant,
+) -> dict[str, Any]:
+    """Evaluate conditions with AND-logic.
+    
+    Conditions are a list of dicts with entity_id and expected state.
+    All must match for the condition to pass.
+    Unavailable entities are treated as FAIL.
+    """
+    from homeassistant.core import State
+    
+    conditions = step.parameters.get("conditions", [])
+    
+    if not conditions:
+        # No conditions = pass
+        return {
+            "result": True,
+            "reason": "no_conditions",
+            "conditions_evaluated": 0,
+            "status": "completed"
+        }
+    
+    _LOGGER.debug(f"Evaluating {len(conditions)} conditions (AND-logic)")
+    
+    for i, condition in enumerate(conditions):
+        entity_id = condition.get("entity_id")
+        expected_state = condition.get("state")
+        
+        if not entity_id or expected_state is None:
+            _LOGGER.error(
+                f"Condition {i} missing entity_id or state: {condition}"
+            )
+            return {
+                "result": False,
+                "reason": "invalid_condition_format",
+                "condition_index": i,
+                "status": "error"
+            }
+        
+        # Get current state
+        state_obj: State | None = hass.states.get(entity_id)
+        
+        if state_obj is None:
+            _LOGGER.warning(
+                f"Condition entity {entity_id} not found in hass.states, treating as FAIL"
+            )
+            return {
+                "result": False,
+                "reason": "entity_not_found",
+                "failed_entity": entity_id,
+                "condition_index": i,
+                "status": "completed"
+            }
+        
+        current_state = state_obj.state
+        
+        if current_state == "unavailable" or current_state == "unknown":
+            _LOGGER.warning(
+                f"Condition entity {entity_id} is {current_state}, treating as FAIL"
+            )
+            return {
+                "result": False,
+                "reason": "entity_unavailable",
+                "failed_entity": entity_id,
+                "entity_state": current_state,
+                "condition_index": i,
+                "status": "completed"
+            }
+        
+        # Check if state matches expected
+        if current_state != str(expected_state):
+            _LOGGER.info(
+                f"Condition {i} FAILED: {entity_id} state '{current_state}' != '{expected_state}'"
+            )
+            return {
+                "result": False,
+                "reason": "condition_mismatch",
+                "failed_entity": entity_id,
+                "expected_state": str(expected_state),
+                "actual_state": current_state,
+                "condition_index": i,
+                "status": "completed"
+            }
+        
+        _LOGGER.debug(f"Condition {i} OK: {entity_id} = {current_state}")
+    
+    # All conditions passed
+    _LOGGER.info(f"All {len(conditions)} conditions passed (AND-logic)")
+    return {
+        "result": True,
+        "reason": "all_conditions_passed",
+        "conditions_evaluated": len(conditions),
+        "status": "completed"
+    }
+
 # ── Example chain builder ───────────────────────────────────────────────
 
 def create_announcement_chain(
