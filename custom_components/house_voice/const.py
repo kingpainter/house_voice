@@ -1,9 +1,9 @@
-# VERSION = "3.3.1"
+# VERSION = "3.4.0"
 # File: const.py
 # Description: Constants for House Voice Manager
 
 DOMAIN   = "house_voice"
-VERSION  = "3.3.1"
+VERSION  = "3.4.0"
 
 # Storage
 STORAGE_KEY             = "house_voice_events"
@@ -62,3 +62,11 @@ TTS_DUCK_FACTOR: dict[str, float] = {
 SPAM_FILTER_SECONDS = 30                        # minimum seconds between repeat events
 SPAM_CLEANUP_AGE = 3600                         # cleanup _last_spoken entries older than this
 HISTORY_MAX_ENTRIES = 50                        # max in-memory history log size
+
+# REST API (Sprint 1)
+REST_API_PORT = 8765
+REST_API_HOST = "127.0.0.1"
+ 
+# History Database (Sprint 1)
+HISTORY_DB_NAME = "house_voice_history.db"
+HISTORY_CLEANUP_DAYS = 30
