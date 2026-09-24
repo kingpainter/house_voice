@@ -38,6 +38,11 @@ class ChainStep:
     on_error: str = "continue"  # continue, retry, fail
     max_retries: int = 3
     depends_on: list[str] = field(default_factory=list)  # Step IDs this depends on
+    
+    # ── Sprint 3 Task 2: Conditional Steps ────────────────────────────────────
+    condition: Optional[dict] = None  # Single condition: {"entity_id": "...", "state": "..."}
+    conditions: list[dict] = field(default_factory=list)  # Multiple conditions (AND-logic)
+    branch_on_condition: dict[str, str] = field(default_factory=dict)  # {"true": step_id, "false": step_id}
 
     @property
     def step_id(self) -> str:
