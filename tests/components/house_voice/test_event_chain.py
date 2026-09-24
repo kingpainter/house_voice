@@ -236,3 +236,130 @@ async def test_handle_delay_action(mock_hass):
     
     assert result["duration_ms"] == 100
     assert result["status"] == "completed"
+
+
+# ── Sprint 3 Task 2: Conditional Steps Tests ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_should_execute_step_with_condition_true(mock_hass):
+    """Test that a step executes when condition is true."""
+    manager = EventChainManager(mock_hass)
+    
+    # Register handlers
+    async def mock_condition_handler(step, hass):
+        return {"result": True}
+    
+    async def mock_announcement_handler(step, hass):
+        return {"success": True}
+    
+    manager.register_action_handler(
+        ChainActionType.CONDITION_CHECK,
+        mock_condition_handler
+    )
+    manager.register_action_handler(
+        ChainActionType.ANNOUNCEMENT,
+        mock_announcement_handler
+    )
+    
+    # Create a chain with condition and branching
+    cond_step = ChainStep(
+        action=ChainActionType.CONDITION_CHECK,
+        parameters={"conditions": [
+            {"entity_id": "binary_sensor.test", "state": "on"}
+        ]},
+        branch_on_condition={
+            "true": "announcement_execute_this",
+            "false": "announcement_skip_this"
+        }
+    )
+    
+    true_step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="execute_this",
+    )
+    
+    false_step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="skip_this",
+    )
+    
+    # Set up execution state
+    execution = ChainExecution(chain_id="test", started_at=0)
+    execution.step_results[cond_step.step_id] = {"result": True}
+    
+    # Check if steps should execute
+    steps_by_id = {
+        cond_step.step_id: cond_step,
+        true_step.step_id: true_step,
+        false_step.step_id: false_step,
+    }
+    
+    true_should_exec, reason = manager._should_execute_step(true_step, execution, steps_by_id)
+    false_should_exec, reason_false = manager._should_execute_step(false_step, execution, steps_by_id)
+    
+    assert true_should_exec is True, "True branch should execute when condition passes"
+    assert false_should_exec is False, "False branch should not execute when condition passes"
+
+
+@pytest.mark.asyncio
+async def test_should_execute_step_with_condition_false(mock_hass):
+    """Test that correct step executes when condition is false."""
+    manager = EventChainManager(mock_hass)
+    
+    # Create a chain with condition
+    cond_step = ChainStep(
+        action=ChainActionType.CONDITION_CHECK,
+        parameters={"conditions": [
+            {"entity_id": "binary_sensor.test", "state": "on"}
+        ]},
+        branch_on_condition={
+            "true": "announcement_execute_this",
+            "false": "announcement_skip_this"
+        }
+    )
+    
+    true_step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="execute_this",
+    )
+    
+    false_step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="skip_this",
+    )
+    
+    # Set up execution state - condition failed
+    execution = ChainExecution(chain_id="test", started_at=0)
+    execution.step_results[cond_step.step_id] = {"result": False}
+    
+    # Check if steps should execute
+    steps_by_id = {
+        cond_step.step_id: cond_step,
+        true_step.step_id: true_step,
+        false_step.step_id: false_step,
+    }
+    
+    true_should_exec, reason = manager._should_execute_step(true_step, execution, steps_by_id)
+    false_should_exec, reason_false = manager._should_execute_step(false_step, execution, steps_by_id)
+    
+    assert true_should_exec is False, "True branch should not execute when condition fails"
+    assert false_should_exec is True, "False branch should execute when condition fails"
+
+
+@pytest.mark.asyncio
+async def test_step_without_condition_gate_executes(mock_hass):
+    """Test that steps without condition gates execute normally."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="normal_step",
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    steps_by_id = {step.step_id: step}
+    
+    should_exec, reason = manager._should_execute_step(step, execution, steps_by_id)
+    
+    assert should_exec is True, "Steps without condition gates should execute"
+    assert reason == "no_condition_gate"
