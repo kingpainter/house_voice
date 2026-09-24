@@ -32,8 +32,6 @@ from .panel import async_register_panel, async_unregister_panel
 from .storage import HouseVoiceConditions, HouseVoiceStorage
 from .voice_engine import VoiceEngine
 from .websocket import async_register_websocket_commands
-from .api.rest_api import async_setup_rest_api
-from .storage.history_db import HistoryDatabase
 
 _LOGGER = logging.getLogger(__name__)
 
