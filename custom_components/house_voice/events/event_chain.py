@@ -28,6 +28,80 @@ class ChainActionType(str, Enum):
     WEBHOOK = "webhook"
 
 
+
+@dataclass
+class RetryConfig:
+    """Configuration for per-step retry behavior with backoff and circuit breaker."""
+    max_attempts: int = 3
+    backoff_mode: str = "exponential"  # exponential | linear | constant
+    base_delay_ms: int = 100
+    max_delay_ms: int = 5000
+    
+    # Circuit breaker: if service fails N times, skip future attempts
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_reset_after_seconds: int = 60
+    
+    def get_delay_ms(self, attempt: int) -> int:
+        """Calculate delay for retry attempt (0-indexed).
+        
+        - exponential: 100ms, 200ms, 400ms, 800ms, ...
+        - linear: 100ms, 200ms, 300ms, 400ms, ...
+        - constant: 100ms, 100ms, 100ms, ...
+        """
+        if attempt < 0:
+            return 0
+        
+        if self.backoff_mode == "exponential":
+            delay = self.base_delay_ms * (2 ** attempt)
+        elif self.backoff_mode == "linear":
+            delay = self.base_delay_ms * (attempt + 1)
+        else:  # constant
+            delay = self.base_delay_ms
+        
+        return min(delay, self.max_delay_ms)
+
+
+@dataclass
+class CircuitBreakerState:
+    """Circuit breaker state for a step."""
+    failure_count: int = 0
+    last_failure_time: Optional[float] = None
+    is_open: bool = False  # True = skip executions
+    
+    def should_skip(self, threshold: int, reset_after_seconds: int) -> bool:
+        """Check if circuit breaker should skip execution."""
+        if not self.is_open:
+            return False
+        
+        # Check if enough time has passed to reset
+        if self.last_failure_time:
+            import time
+            time_since_failure = time.time() - self.last_failure_time
+            if time_since_failure > reset_after_seconds:
+                self.is_open = False
+                self.failure_count = 0
+                return False
+        
+        return True
+    
+    def record_failure(self, threshold: int) -> bool:
+        """Record failure and return True if circuit should open."""
+        import time
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= threshold:
+            self.is_open = True
+            return True
+        return False
+    
+    def reset(self) -> None:
+        """Reset circuit breaker."""
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.is_open = False
+
+
 @dataclass
 class ChainStep:
     """Single step in an event chain."""
@@ -43,6 +117,9 @@ class ChainStep:
     condition: Optional[dict] = None  # Single condition: {"entity_id": "...", "state": "..."}
     conditions: list[dict] = field(default_factory=list)  # Multiple conditions (AND-logic)
     branch_on_condition: dict[str, str] = field(default_factory=dict)  # {"true": step_id, "false": step_id}
+    
+    # ── Sprint 4 Task: Advanced Retry Strategies ───────────────────────────────
+    retry_config: 'RetryConfig' = field(default_factory=RetryConfig)
 
     @property
     def step_id(self) -> str:
@@ -71,6 +148,7 @@ class EventChainManager:
         self.chains: dict[str, list[ChainStep]] = {}
         self.executions: dict[str, ChainExecution] = {}
         self.action_handlers: dict[ChainActionType, Callable] = {}
+        self.circuit_breaker_states: dict[str, CircuitBreakerState] = {}
         self._lock = asyncio.Lock()
 
     def register_action_handler(
@@ -152,7 +230,7 @@ class EventChainManager:
         step: ChainStep,
         execution: ChainExecution,
     ) -> bool:
-        """Execute a single step with retry logic."""
+        """Execute a single step with retry logic and circuit breaker."""
         handler = self.action_handlers.get(step.action)
 
         if not handler:
@@ -162,7 +240,27 @@ class EventChainManager:
             )
             return False
 
-        for attempt in range(step.max_retries):
+        # Initialize circuit breaker state if not exists
+        if step.step_id not in self.circuit_breaker_states:
+            self.circuit_breaker_states[step.step_id] = CircuitBreakerState()
+
+        cb_state = self.circuit_breaker_states[step.step_id]
+
+        # Check if circuit breaker should skip this step
+        if cb_state.should_skip(
+            step.retry_config.circuit_breaker_threshold,
+            step.retry_config.circuit_breaker_reset_after_seconds,
+        ):
+            _LOGGER.warning(
+                "Circuit breaker OPEN for step: %s (skip execution)",
+                step.step_id,
+            )
+            execution.failed_steps.add(step.step_id)
+            return False
+
+        # Attempt execution with retry logic
+        max_attempts = step.retry_config.max_attempts
+        for attempt in range(max_attempts):
             try:
                 # Pre-step delay if specified
                 if step.delay_ms:
@@ -173,11 +271,14 @@ class EventChainManager:
                 execution.step_results[step.step_id] = result
                 execution.completed_steps.add(step.step_id)
 
+                # Reset circuit breaker on success
+                cb_state.reset()
+
                 _LOGGER.debug(
                     "Chain step completed: %s (attempt %d/%d)",
                     step.step_id,
                     attempt + 1,
-                    step.max_retries,
+                    max_attempts,
                 )
                 return True
 
@@ -187,17 +288,32 @@ class EventChainManager:
                     "Chain step failed: %s (attempt %d/%d): %s",
                     step.step_id,
                     attempt + 1,
-                    step.max_retries,
+                    max_attempts,
                     err,
                 )
 
+                # Record failure and check if circuit breaker should open
+                cb_state.record_failure(step.retry_config.circuit_breaker_threshold)
+
                 # If this is the last attempt, mark as failed
-                if attempt == step.max_retries - 1:
+                if attempt == max_attempts - 1:
                     execution.failed_steps.add(step.step_id)
+                    if cb_state.is_open:
+                        _LOGGER.error(
+                            "Circuit breaker OPENED for step: %s (threshold: %d failures)",
+                            step.step_id,
+                            step.retry_config.circuit_breaker_threshold,
+                        )
                     return False
 
-                # Exponential backoff: 0.5s, 1s, 2s
-                backoff_ms = min(500 * (2 ** attempt), 2000)
+                # Configurable backoff based on backoff_mode
+                backoff_ms = step.retry_config.get_delay_ms(attempt)
+                _LOGGER.debug(
+                    "Backing off %dms before retry (mode: %s, attempt: %d)",
+                    backoff_ms,
+                    step.retry_config.backoff_mode,
+                    attempt,
+                )
                 await asyncio.sleep(backoff_ms / 1000.0)
 
         return False

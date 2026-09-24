@@ -9,6 +9,8 @@ from custom_components.house_voice.events.event_chain import (
     ChainStep,
     ChainActionType,
     ChainExecution,
+    RetryConfig,
+    CircuitBreakerState,
     create_announcement_chain,
     handle_announcement_action,
     handle_delay_action,
@@ -649,3 +651,139 @@ async def test_webhook_step_data_included(mock_hass) -> None:
     assert "action" in payload
     assert "step" in payload
     assert payload["action"] == "webhook"
+
+
+# ── Sprint 4: Advanced Retry Strategies Tests ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_exponential_backoff(mock_hass):
+    """Test exponential backoff calculation."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        retry_config=RetryConfig(
+            max_attempts=4,
+            backoff_mode="exponential",
+            base_delay_ms=100,
+            max_delay_ms=2000,
+        ),
+    )
+    
+    # Verify delay calculations match exponential formula
+    assert step.retry_config.get_delay_ms(0) == 100      # 100 * 2^0
+    assert step.retry_config.get_delay_ms(1) == 200      # 100 * 2^1
+    assert step.retry_config.get_delay_ms(2) == 400      # 100 * 2^2
+    assert step.retry_config.get_delay_ms(3) == 800      # 100 * 2^3
+    assert step.retry_config.get_delay_ms(4) == 1600     # 100 * 2^4
+    assert step.retry_config.get_delay_ms(5) == 2000     # capped at 2000
+
+
+@pytest.mark.asyncio
+async def test_linear_backoff(mock_hass):
+    """Test linear backoff calculation."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        retry_config=RetryConfig(
+            max_attempts=4,
+            backoff_mode="linear",
+            base_delay_ms=500,
+            max_delay_ms=2000,
+        ),
+    )
+    
+    # Verify delay calculations match linear formula
+    assert step.retry_config.get_delay_ms(0) == 500      # 500 * 1
+    assert step.retry_config.get_delay_ms(1) == 1000     # 500 * 2
+    assert step.retry_config.get_delay_ms(2) == 1500     # 500 * 3
+    assert step.retry_config.get_delay_ms(3) == 2000     # 500 * 4
+    assert step.retry_config.get_delay_ms(4) == 2000     # 500 * 5 capped at 2000
+
+
+@pytest.mark.asyncio
+async def test_constant_backoff(mock_hass):
+    """Test constant backoff calculation."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        retry_config=RetryConfig(
+            max_attempts=4,
+            backoff_mode="constant",
+            base_delay_ms=500,
+            max_delay_ms=2000,
+        ),
+    )
+    
+    # Verify delay calculations remain constant
+    assert step.retry_config.get_delay_ms(0) == 500      # always base_delay
+    assert step.retry_config.get_delay_ms(1) == 500
+    assert step.retry_config.get_delay_ms(2) == 500
+    assert step.retry_config.get_delay_ms(3) == 500
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_opens_and_resets(mock_hass):
+    """Test circuit breaker opens after threshold and resets after timeout."""
+    manager = EventChainManager(mock_hass)
+    
+    # Create a step that will fail
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="failing_speaker",
+        retry_config=RetryConfig(
+            max_attempts=2,
+            backoff_mode="constant",
+            base_delay_ms=10,
+            circuit_breaker_threshold=3,
+            circuit_breaker_reset_after_seconds=1,
+        ),
+    )
+    
+    execution = ChainExecution(chain_id="test_chain", started_at=0)
+    
+    # Register a handler that always fails
+    async def failing_handler(step, hass):
+        raise RuntimeError("Handler failure")
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, failing_handler)
+    
+    # Execute step 3 times (threshold = 3)
+    # First attempt: fails once
+    result1 = await manager._execute_step_with_retry(step, execution)
+    assert result1 is False
+    assert step.step_id in manager.circuit_breaker_states
+    assert manager.circuit_breaker_states[step.step_id].failure_count == 2  # 2 retries per attempt logic
+    assert not manager.circuit_breaker_states[step.step_id].is_open
+    
+    # Second attempt: fails, reaches threshold
+    result2 = await manager._execute_step_with_retry(step, execution)
+    assert result2 is False
+    # Circuit breaker should now be open
+    assert manager.circuit_breaker_states[step.step_id].is_open
+    
+    # Third attempt: should be skipped due to open circuit breaker
+    execution.failed_steps.clear()
+    result3 = await manager._execute_step_with_retry(step, execution)
+    assert result3 is False  # Should fail without attempting
+    assert step.step_id in execution.failed_steps
+    
+    # Simulate time passing and verify reset behavior
+    # Manually set last failure time to past
+    import time
+    cb = manager.circuit_breaker_states[step.step_id]
+    cb.last_failure_time = time.time() - 2.0  # 2 seconds ago
+    
+    # Next check should reset the circuit breaker
+    should_skip = cb.should_skip(
+        step.retry_config.circuit_breaker_threshold,
+        step.retry_config.circuit_breaker_reset_after_seconds,
+    )
+    assert should_skip is False
+    assert cb.is_open is False
+    assert cb.failure_count == 0
