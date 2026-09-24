@@ -389,8 +389,9 @@ class EventChainManager:
         self,
         step: ChainStep,
         execution: ChainExecution,
+        event_context: Optional[EventContext] = None,
     ) -> bool:
-        """Execute a single step with retry logic and circuit breaker."""
+        """Execute a single step with retry logic, filtering, and circuit breaker."""
         handler = self.action_handlers.get(step.action)
 
         if not handler:
@@ -400,6 +401,15 @@ class EventChainManager:
             )
             return False
 
+        # Check event filter
+        if step.filter and event_context:
+            if not evaluate_event_filter(step.filter, event_context.data):
+                _LOGGER.debug(
+                    "Step skipped due to filter mismatch: %s",
+                    step.step_id,
+                )
+                return True  # Non-fatal: skip but don't fail
+        
         # Initialize circuit breaker state if not exists
         if step.step_id not in self.circuit_breaker_states:
             self.circuit_breaker_states[step.step_id] = CircuitBreakerState()

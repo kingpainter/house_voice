@@ -11,6 +11,7 @@ from custom_components.house_voice.events.event_chain import (
     ChainExecution,
     RetryConfig,
     CircuitBreakerState,
+    EventContext,
     create_announcement_chain,
     handle_announcement_action,
     handle_delay_action,
@@ -918,4 +919,125 @@ async def test_apply_transformations(mock_hass):
     result = apply_transformations(parameters, transform, context)
     assert result["message"] == "Hello World"
     assert result["volume"] == "50"  # Unchanged
+
+
+
+# Phase 2: Event Filtering Integration Tests
+
+@pytest.mark.asyncio
+async def test_execute_step_with_filter_match(mock_hass):
+    """Test step executes when filter matches."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        filter={"key": "source", "value": "mqtt", "operator": "equals"},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="mqtt",
+        data={"source": "mqtt", "device": "sensor1"},
+    )
+    
+    # Register handler
+    async def mock_handler(step, hass):
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Execute - should proceed because filter matches
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    assert result is True
+    assert step.step_id in execution.completed_steps
+
+
+@pytest.mark.asyncio
+async def test_execute_step_with_filter_mismatch(mock_hass):
+    """Test step skips when filter doesn't match."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        filter={"key": "source", "value": "mqtt", "operator": "equals"},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="service",
+        data={"source": "service", "device": "sensor1"},
+    )
+    
+    async def mock_handler(step, hass):
+        raise RuntimeError("Should not be called")
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Execute - should skip due to filter mismatch
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    assert result is True  # Non-fatal skip
+    assert step.step_id not in execution.completed_steps
+    assert step.step_id not in execution.failed_steps
+
+
+@pytest.mark.asyncio
+async def test_execute_step_without_filter_executes(mock_hass):
+    """Test step executes when no filter specified."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        # No filter
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="mqtt",
+        data={"source": "mqtt"},
+    )
+    
+    async def mock_handler(step, hass):
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Execute - should proceed (no filter)
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    assert result is True
+    assert step.step_id in execution.completed_steps
+
+
+@pytest.mark.asyncio
+async def test_execute_step_filter_without_context(mock_hass):
+    """Test step executes even with filter when no context provided."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="speaker_group",
+        filter={"key": "source", "value": "mqtt", "operator": "equals"},
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    
+    async def mock_handler(step, hass):
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Execute without event_context - filter should be skipped
+    result = await manager._execute_step_with_retry(
+        step, execution, None
+    )
+    assert result is True
+    assert step.step_id in execution.completed_steps
 
