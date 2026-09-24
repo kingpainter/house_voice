@@ -202,6 +202,43 @@ class EventChainManager:
 
         return False
 
+
+    def _should_execute_step(
+        self,
+        step: ChainStep,
+        execution: ChainExecution,
+        steps_by_id: dict[str, ChainStep],
+    ) -> tuple[bool, str]:
+        """
+        Check if a step should execute based on condition routing.
+        
+        Returns: (should_execute, reason)
+        """
+        # Check if this step has a branch_on_condition that references a condition step
+        for cond_step_id, next_step_map in [(s.step_id, s.branch_on_condition) 
+                                             for s in steps_by_id.values() 
+                                             if s.branch_on_condition]:
+            if step.step_id in next_step_map.values():
+                # This step is a target of a conditional branch
+                # Check if the condition result allows execution
+                if cond_step_id in execution.step_results:
+                    cond_result = execution.step_results[cond_step_id]
+                    cond_passed = cond_result.get("result", False) if isinstance(cond_result, dict) else False
+                    
+                    # Check which branch should execute
+                    true_target = next_step_map.get("true")
+                    false_target = next_step_map.get("false")
+                    
+                    if cond_passed and step.step_id == true_target:
+                        return True, "condition_passed_true_branch"
+                    elif not cond_passed and step.step_id == false_target:
+                        return True, "condition_passed_false_branch"
+                    else:
+                        return False, "condition_blocked_alternative_branch"
+        
+        # No condition gates this step
+        return True, "no_condition_gate"
+
     def get_execution(self, chain_id: str) -> Optional[ChainExecution]:
         """Get execution state for a chain."""
         return self.executions.get(chain_id)
