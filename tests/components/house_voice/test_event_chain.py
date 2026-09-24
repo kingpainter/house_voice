@@ -1041,3 +1041,141 @@ async def test_execute_step_filter_without_context(mock_hass):
     assert result is True
     assert step.step_id in execution.completed_steps
 
+
+
+# Phase 3: Dynamic Routing Integration Tests
+
+@pytest.mark.asyncio
+async def test_dynamic_routing_simple(mock_hass):
+    """Test dynamic routing resolves target from expression."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="default_speaker",
+        route_expression="{{ event.speaker }}",
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="mqtt",
+        data={"speaker": "living_room_speaker"},
+    )
+    
+    received_target = None
+    
+    async def mock_handler(step, hass):
+        nonlocal received_target
+        received_target = step.target
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    
+    assert result is True
+    assert received_target == "living_room_speaker"
+    assert step.step_id in execution.completed_steps
+
+
+@pytest.mark.asyncio
+async def test_dynamic_routing_with_conditions(mock_hass):
+    """Test dynamic routing with conditional expression."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="default_speaker",
+        route_expression="{{ event.room if event.room == 'living_room' else 'bedroom' }}",
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="mqtt",
+        data={"room": "living_room"},
+    )
+    
+    received_target = None
+    
+    async def mock_handler(step, hass):
+        nonlocal received_target
+        received_target = step.target
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    
+    assert result is True
+    assert received_target == "living_room"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_routing_fallback_to_static(mock_hass):
+    """Test fallback to static target when route_expression undefined."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="static_speaker",
+        route_expression="{{ event.missing_key }}",
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    event_context = EventContext(
+        source="mqtt",
+        data={"other_field": "value"},
+    )
+    
+    received_target = None
+    
+    async def mock_handler(step, hass):
+        nonlocal received_target
+        received_target = step.target
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    result = await manager._execute_step_with_retry(
+        step, execution, event_context
+    )
+    
+    assert result is True
+    # Should use the expression result (empty string) not static fallback
+    assert received_target == ""
+
+
+@pytest.mark.asyncio
+async def test_dynamic_routing_without_context(mock_hass):
+    """Test routing without event_context uses static target."""
+    manager = EventChainManager(mock_hass)
+    
+    step = ChainStep(
+        action=ChainActionType.ANNOUNCEMENT,
+        target="static_speaker",
+        route_expression="{{ event.speaker }}",
+    )
+    
+    execution = ChainExecution(chain_id="test", started_at=0)
+    
+    received_target = None
+    
+    async def mock_handler(step, hass):
+        nonlocal received_target
+        received_target = step.target
+        return {"success": True}
+    
+    manager.register_action_handler(ChainActionType.ANNOUNCEMENT, mock_handler)
+    
+    # Execute without event_context - should use static target
+    result = await manager._execute_step_with_retry(
+        step, execution, None
+    )
+    
+    assert result is True
+    assert received_target == "static_speaker"
+

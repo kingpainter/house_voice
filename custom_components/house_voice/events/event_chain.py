@@ -236,34 +236,47 @@ def evaluate_event_filter(filter_dict: Optional[dict], event_data: dict) -> bool
 
 
 def evaluate_expression(expression: str, context: dict) -> str:
-    """Evaluate a simple template expression.
+    """Evaluate a template expression.
     
-    Supports basic {{ key }} substitution from context.
-    For now, use simple string substitution instead of Jinja2.
+    Supports:
+    - Simple substitution: {{ event.room }}
+    - Conditional ternary: {{ a if condition else b }}
+    - Dot notation: {{ context.nested.value }}
     
-    Example: "{{ event.room }}" with context {"event": {"room": "living_room"}}
+    Example: "{{ event.room }}" -> "living_room"
+    Example: "{{ event.room if event.room == 'kitchen' else 'default' }}"
     """
     if not expression:
         return ""
     
     try:
-        # Simple {{ }} substitution
-        import re
-        pattern = r'\{\{\s*(\w+(?:\.\w+)*)\s*\}\}'
-        
-        def replace_expr(match):
-            key_path = match.group(1).split('.')
-            value = context
-            for key in key_path:
-                if isinstance(value, dict):
-                    value = value.get(key)
-                else:
-                    return match.group(0)  # Return original if can't resolve
-            return str(value) if value is not None else ""
-        
-        return re.sub(pattern, replace_expr, expression)
+        # Try using Jinja2 if available
+        try:
+            from jinja2 import Environment, BaseLoader
+            env = Environment(loader=BaseLoader())
+            template = env.from_string(expression)
+            return str(template.render(context))
+        except ImportError:
+            # Fall back to simple substitution
+            import re
+            
+            # Handle simple {{ key.path }} patterns
+            pattern = r'\{\{\s*([\w.]+)\s*\}\}'
+            
+            def replace_simple(match):
+                key_path = match.group(1).split('.')
+                value = context
+                for key in key_path:
+                    if isinstance(value, dict):
+                        value = value.get(key)
+                    else:
+                        return match.group(0)
+                return str(value) if value is not None else ""
+            
+            result = re.sub(pattern, replace_simple, expression)
+            return result
     except Exception as err:
-        _LOGGER.warning("Expression evaluation failed: %s", err)
+        _LOGGER.warning("Expression evaluation failed: %s, returning expression as-is", err)
         return expression
 
 
@@ -410,6 +423,30 @@ class EventChainManager:
                 )
                 return True  # Non-fatal: skip but don't fail
         
+        # Resolve dynamic routing
+        resolved_target = step.target
+        if step.route_expression and event_context:
+            context_dict = {
+                "event": event_context.data,
+                "metadata": event_context.metadata,
+                "results": execution.step_results,
+            }
+            try:
+                resolved_target = evaluate_expression(step.route_expression, context_dict)
+                if resolved_target != step.target:
+                    _LOGGER.debug(
+                        "Dynamic routing: %s -> %s (expression: %s)",
+                        step.target,
+                        resolved_target,
+                        step.route_expression,
+                    )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Route expression evaluation failed: %s, using static target: %s",
+                    err,
+                    step.target,
+                )
+        
         # Initialize circuit breaker state if not exists
         if step.step_id not in self.circuit_breaker_states:
             self.circuit_breaker_states[step.step_id] = CircuitBreakerState()
@@ -436,8 +473,15 @@ class EventChainManager:
                 if step.delay_ms:
                     await asyncio.sleep(step.delay_ms / 1000.0)
 
+                # Create step copy with resolved target for handler
+                step_to_execute = step
+                if resolved_target != step.target:
+                    # Create a shallow copy with resolved target
+                    import dataclasses
+                    step_to_execute = dataclasses.replace(step, target=resolved_target)
+                
                 # Execute handler
-                result = await handler(step, self.hass)
+                result = await handler(step_to_execute, self.hass)
                 execution.step_results[step.step_id] = result
                 execution.completed_steps.add(step.step_id)
 
