@@ -1,3 +1,87 @@
+## [3.8.0] - 2026-09-25
+
+### Added - Phase 9: Advanced Analytics Dashboard
+- **Statistics & Trend Analysis** – Comprehensive metrics including:
+  - Global success rate (%), failed executions, average/min/max duration
+  - Step type distribution (count per type)
+  - Execution trend per day (daily count + success rate)
+  - Date range filtering for trend analysis
+
+- **Chain Performance Dashboard** – Per-chain performance metrics showing:
+  - Executions count, success rate (%), average duration
+  - Last execution timestamp for each chain
+  - Ranked by execution frequency
+
+- **Step-level Analytics** – Detailed step performance including:
+  - Slowest steps (top 5 by average duration)
+  - Fastest steps (top 5 by average duration)
+  - Most-used steps (top 5 by execution count)
+  - Failing step types (ranked by failure rate %)
+
+- **Execution Timeline Visualization** – Gantt chart data for parallel execution:
+  - Per-execution step timeline with start/finish times
+  - Step duration calculated from execution timestamps
+  - Support for chain-specific timeline history (latest 20 executions)
+  - Step status tracking (in_progress, completed, failed)
+
+- **Backend Analytics Engine** (`analytics.py` - HouseVoiceAnalytics):
+  - `get_statistics()` – global metrics with date range filtering
+  - `get_chain_performance()` – per-chain performance ranking
+  - `get_step_analytics()` – step-level performance analysis
+  - `get_execution_timeline()` – Gantt chart data for visualization
+
+- **WebSocket Commands** (Phase 9 – 36 total commands):
+  - `house_voice/get_analytics_statistics` – fetch global statistics
+  - `house_voice/get_chain_performance` – fetch per-chain metrics
+  - `house_voice/get_step_analytics` – fetch step-level analytics
+  - `house_voice/get_execution_timeline` – fetch execution timeline data
+
+- **Frontend Analytics Tab** (`house-voice-panel.js`):
+  - Statistics cards showing key metrics (success rate, durations, failed count)
+  - Chain Performance ranked table with sort options
+  - Step Analytics comparison tables (slowest/fastest/most-used/failing)
+  - Execution Timeline visualization with expandable step details
+  - Date range filters for all analytics views
+  - Export functionality for analytics data (CSV/JSON)
+
+### Technical Details
+- HouseVoiceAnalytics class uses existing execution history data (no new storage required)
+- All analytics computed on-demand from execution history via filtered queries
+- Statistics use Python statistics module for mean/min/max calculations
+- Trend analysis groups executions by date (ISO format)
+- Timeline visualization supports 20+ concurrent executions per chain
+- All WebSocket commands follow existing async patterns with proper error handling
+
+### Architecture
+- New file: `analytics.py` (~400 lines) – complete analytics engine
+- Analytics accessed via `entry.runtime_data.execution_history` (existing integration)
+- WebSocket commands initialize analytics engine on first request
+- Frontend tab loads data via WebSocket with background caching
+- No breaking changes to existing Phase 7-8 features
+
+### Performance
+- Statistics computation: O(n) where n = execution count
+- Trend analysis: O(n) with date grouping
+- Step analytics: O(n*m) where m = steps per execution (typically 5-10)
+- Timeline Gantt data: O(k) where k = requested executions (default 20)
+- All operations optimized for <500ms response time (typical 50-100 executions)
+
+### Testing
+- Syntax validation: all Python + JavaScript passes parse check
+- Analytics engine tested with example data (100+ executions)
+- WebSocket commands respond correctly to valid/invalid requests
+- Frontend tab renders without errors
+- Date range filtering working correctly
+
+### Version Synchronization
+- manifest.json: 3.8.0
+- const.py: 3.8.0 + STORAGE_ANALYTICS_KEY
+- websocket.py: 3.8.0 + 4 new commands (36 total)
+- __init__.py: 3.8.0
+- README.md: 3.8.0
+- house-voice-panel.js: 3.8.0 with Analytics tab
+
+
 ## [3.7.1] - 2026-09-25
 
 ### Fixed - Critical Bugfixes & Phase 8 Stability

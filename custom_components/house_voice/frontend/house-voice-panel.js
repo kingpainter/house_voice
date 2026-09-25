@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.7.1";
+    this._version       = "3.8.0";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
@@ -35,6 +35,7 @@ class HouseVoicePanel extends HTMLElement {
     this._templates     = {};      // { templateId: { name, description, steps } }
     this._currentChain  = null;    // currently active chain
     this._execHistory   = [];      // [ { chainId, timestamp, steps, success, duration } ]
+    this._analytics      = {};      // { statistics: {...}, chainPerf: [...], stepAnalytics: {...}, timeline: {...} }
     this._historyFilters = {
       chainId: null,
       status: null,

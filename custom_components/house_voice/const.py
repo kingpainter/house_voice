@@ -1,15 +1,16 @@
-# VERSION  = "3.7.1"
+# VERSION  = "3.8.0"
 # File: const.py
 # Description: Constants for House Voice Manager
 
 DOMAIN   = "house_voice"
-VERSION  = "3.7.1"
+VERSION  = "3.8.0"
 
 # Storage
 STORAGE_KEY             = "house_voice_events"
 STORAGE_VERSION         = 1
 STORAGE_GROUPS_KEY      = "house_voice_groups"
 STORAGE_CONDITIONS_KEY  = "house_voice_conditions"
+STORAGE_ANALYTICS_KEY   = "house_voice_analytics"
 
 # Services
 SERVICE_SAY       = "say"

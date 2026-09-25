@@ -2,7 +2,7 @@
 
 A Home Assistant custom integration that centralizes all text-to-speech (TTS) output in your home. Instead of calling media players directly in automations, you define named voice events and trigger them with a single service call.
 
-**Version:** 3.7.1 | **Platform:** Home Assistant | **Setup:** UI only (no YAML) | **Quality:** 🥈 Silver
+**Version:** 3.8.0 | **Platform:** Home Assistant | **Setup:** UI only (no YAML) | **Quality:** 🥈 Silver
 
 ---
 
