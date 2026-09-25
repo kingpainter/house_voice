@@ -318,12 +318,12 @@ class HouseVoiceExecutionHistory:
     
     def get_version(self, chain_id: str, version_num: int) -> dict[str, Any] | None:
         """Retrieve a specific version of a chain."""
-        versions = self.data.get(f"versions_{chain_id}", {})
+        versions = self.store.data.get(f"versions_{chain_id}", {})
         return versions.get(str(version_num))
     
     def list_versions(self, chain_id: str) -> list[dict[str, Any]]:
         """List all versions of a chain."""
-        versions = self.data.get(f"versions_{chain_id}", {})
+        versions = self.store.data.get(f"versions_{chain_id}", {})
         return [
             {"version": int(v), "data": data}
             for v, data in sorted(versions.items())
@@ -337,15 +337,15 @@ class HouseVoiceExecutionHistory:
     ) -> None:
         """Save a version snapshot of a chain."""
         versions_key = f"versions_{chain_id}"
-        if versions_key not in self.data:
-            self.data[versions_key] = {}
+        if versions_key not in self.store.data:
+            self.store.data[versions_key] = {}
         
-        self.data[versions_key][str(version_num)] = {
+        self.store.data[versions_key][str(version_num)] = {
             "timestamp": time.time(),
             "data": chain_data.copy()
         }
         
-        await self.store.async_save(self.data)
+        await self.store.async_save(self.store.data)
     
     async def async_rollback_to_version(
         self,
