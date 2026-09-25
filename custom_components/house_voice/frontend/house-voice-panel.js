@@ -597,6 +597,12 @@ class HouseVoicePanel extends HTMLElement {
 
 
   _switchChain(chainId) {
+    if (this._chains[chainId]) {
+      this._currentChain = chainId;
+      this._render();
+    }
+  }
+
   async _loadExecutionHistory() {
     try {
       // Load execution history with filters
@@ -633,11 +639,6 @@ class HouseVoicePanel extends HTMLElement {
     await this._loadExecutionHistory();
     this._selectedExecDetail = null;  // Clear detail view
     this._render();
-  }
-    if (this._chains[chainId]) {
-      this._currentChain = chainId;
-      this._render();
-    }
   }
 
   _getChainStatus(chainId) {
