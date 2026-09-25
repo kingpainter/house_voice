@@ -119,7 +119,9 @@ async def test_async_unload_entry_removes_services(mock_hass, mock_config_entry)
         engine=mock_engine,
         sensor=None,
         panel_registered=True,
-    )
+        chains=MagicMock(),
+        chain_validator=MagicMock(),
+        execution_history=MagicMock(),)
     mock_hass.services.async_remove = MagicMock()
 
     with patch("custom_components.house_voice.async_unregister_panel"), \
