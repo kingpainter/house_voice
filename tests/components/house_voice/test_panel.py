@@ -63,9 +63,9 @@ async def test_static_path_registered_once_per_session(hass_with_panel_data, moc
 
     with patch("custom_components.house_voice.panel.panel_custom.async_register_panel", new=AsyncMock()), \
          patch.object(panel_module, "_HAS_STATIC_PATH_CONFIG", False), \
-        # When _HAS_STATIC_PATH_CONFIG is False, code calls register_static_path (sync) not async_register_static_paths
-        hass.http.register_static_path = MagicMock()
          patch("os.path.getmtime", return_value=1234567890.0):
+        # When _HAS_STATIC_PATH_CONFIG is False, code calls register_static_path (sync)
+        hass.http.register_static_path = MagicMock()
 
         # First setup
         await async_register_panel(hass, mock_entry)
