@@ -1157,6 +1157,7 @@ def ws_get_chain_templates(
 
 @websocket_api.websocket_command({
     "type":                            f"{DOMAIN}/query_executions",
+    vol.Optional("id"):                int,
     vol.Optional("chain_id"):          str,
     vol.Optional("status"):            str,
     vol.Optional("start_date"):        str,
@@ -1214,6 +1215,7 @@ def ws_query_executions(
 
 @websocket_api.websocket_command({
     "type":                    f"{DOMAIN}/get_execution_detail",
+    vol.Optional("id"):        int,
     vol.Required("exec_id"):   str,
 })
 @callback
