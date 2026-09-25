@@ -1327,6 +1327,7 @@ class HouseVoicePanel extends HTMLElement {
       </div>`;
 
     this._bind();
+    this._setupAnalyticsListeners();
   }
 
   // ── Event binding ──────────────────────────────────────────────────────────
@@ -1523,6 +1524,18 @@ class HouseVoicePanel extends HTMLElement {
   }
 
   // ── CSS ────────────────────────────────────────────────────────────────────
+
+  _setupAnalyticsListeners() {
+    const root = this.shadowRoot;
+    root.getElementById("analytics-apply")?.addEventListener("click", () => {
+      const startDate = root.getElementById("analytics-start")?.value;
+      const endDate = root.getElementById("analytics-end")?.value;
+      const chainId = root.getElementById("analytics-chain")?.value;
+      this._analyticsFilters = { startDate, endDate, chainId };
+      this._loadAnalytics();
+    });
+    root.getElementById("analytics-export")?.addEventListener("click", () => this._exportAnalyticsData());
+  }
 
   _css() {
     return `
@@ -2238,6 +2251,206 @@ class HouseVoicePanel extends HTMLElement {
       }
     }
 
+
+
+    /* ── Analytics Dashboard ────────────────────────────────────────────────── */
+    .analytics-wrapper {
+      display: flex; flex-direction: column; gap: 20px; padding: 20px 24px;
+    }
+
+    .analytics-filters {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 14px; background: var(--bg2); border: 1px solid var(--div);
+      border-radius: var(--card-radius);
+    }
+    .analytics-filters input,
+    .analytics-filters select {
+      padding: 8px 12px; background: var(--bg); border: 1px solid var(--div);
+      border-radius: 8px; color: var(--text); font-size: 13px;
+      font-family: 'DM Sans', sans-serif; transition: border-color .2s;
+    }
+    .analytics-filters input:focus,
+    .analytics-filters select:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .btn-apply, .btn-export-csv {
+      padding: 8px 14px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white; border: none; border-radius: 8px; font-size: 13px;
+      font-weight: 600; cursor: pointer; transition: opacity .2s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .btn-apply:hover, .btn-export-csv:hover { opacity: 0.9; }
+
+    /* ── Metrics Widget ── */
+    .metrics-widget {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 8px;
+    }
+    .metric-card {
+      background: var(--bg2); border: 1px solid var(--div);
+      border-radius: var(--card-radius); padding: 16px;
+      transition: border-color .2s, transform .2s;
+    }
+    .metric-card:hover {
+      border-color: rgba(20, 184, 166, 0.3); transform: translateY(-2px);
+    }
+    .metric-label {
+      font-size: 12px; font-weight: 600; color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+    }
+    .metric-value {
+      font-size: 28px; font-weight: 700; color: var(--accent);
+      font-family: 'DM Mono', monospace; margin-bottom: 8px;
+    }
+    .metric-bar {
+      height: 6px; background: rgba(20, 184, 166, 0.1); border-radius: 3px;
+      overflow: hidden;
+    }
+    .metric-progress {
+      height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 3px; transition: width .6s ease-out;
+    }
+
+    /* ── Section Headers ── */
+    .section {
+      margin-bottom: 20px;
+    }
+    .section-title {
+      font-size: 13px; font-weight: 700; color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 12px; padding-left: 2px;
+    }
+
+    /* ── Chain Performance Table ── */
+    .chain-performance-table {
+      background: var(--bg2); border: 1px solid var(--div);
+      border-radius: var(--card-radius); overflow: hidden;
+    }
+    .table-header {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 16px; padding: 12px 16px;
+      background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(52,211,153,0.04));
+      border-bottom: 1px solid var(--div);
+      font-weight: 600; font-size: 12px; color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .table-row {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 16px; padding: 12px 16px; align-items: center;
+      border-bottom: 1px solid rgba(148,163,184,0.06);
+      transition: background .2s;
+    }
+    .table-row:hover {
+      background: rgba(20, 184, 166, 0.04);
+    }
+    .table-row:last-child { border-bottom: none; }
+    .col-name {
+      font-weight: 600; color: var(--text);
+    }
+    .col-executions, .col-duration {
+      color: var(--sub); font-family: 'DM Mono', monospace; font-size: 13px;
+    }
+    .col-success { display: flex; justify-content: flex-start; }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; font-family: 'DM Mono', monospace;
+    }
+
+    /* ── Trend Chart ── */
+    .trend-chart {
+      display: flex; align-items: flex-end; gap: 3px; height: 120px;
+      padding: 16px; background: var(--bg2); border: 1px solid var(--div);
+      border-radius: var(--card-radius);
+    }
+    .trend-bar {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      gap: 4px; min-width: 20px;
+    }
+    .trend-fill {
+      width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent2));
+      border-radius: 4px 4px 0 0; transition: height .4s ease-out;
+      box-shadow: 0 2px 8px rgba(20, 184, 166, 0.2);
+    }
+    .trend-bar:hover .trend-fill {
+      filter: brightness(1.2);
+    }
+    .trend-label {
+      font-size: 10px; font-weight: 500; color: var(--sub);
+      writing-mode: vertical-rl; text-orientation: mixed;
+    }
+
+    /* ── Bottleneck Analysis ── */
+    .bottleneck-list {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .bottleneck-item {
+      display: grid; grid-template-columns: 40px 1fr auto;
+      gap: 12px; align-items: center;
+      padding: 12px 14px; background: var(--bg2); border: 1px solid var(--div);
+      border-radius: 12px; transition: border-color .2s, transform .2s;
+    }
+    .bottleneck-item:hover {
+      border-color: rgba(239, 68, 68, 0.3); transform: translateX(4px);
+    }
+    .bottleneck-rank {
+      font-size: 14px; font-weight: 700; color: var(--accent);
+      font-family: 'DM Mono', monospace; text-align: center;
+      width: 40px; height: 40px; display: flex; align-items: center;
+      justify-content: center; background: rgba(20, 184, 166, 0.1);
+      border-radius: 8px;
+    }
+    .bottleneck-info {
+      flex: 1;
+    }
+    .bottleneck-name {
+      font-weight: 600; color: var(--text); margin-bottom: 2px;
+    }
+    .bottleneck-type {
+      font-size: 12px; color: var(--sub);
+    }
+    .bottleneck-metrics {
+      display: flex; gap: 12px; align-items: center;
+    }
+    .metric-duration, .metric-failure {
+      font-size: 12px; font-weight: 600; font-family: 'DM Mono', monospace;
+    }
+    .metric-duration { color: var(--orange); }
+
+    /* ── Step Analytics Grid ── */
+    .step-analytics-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .step-column {
+      background: var(--bg2); border: 1px solid var(--div);
+      border-radius: var(--card-radius); padding: 14px;
+    }
+    .step-column-title {
+      font-size: 12px; font-weight: 700; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--div);
+    }
+    .step-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,0.06);
+    }
+    .step-item:last-child { border-bottom: none; }
+    .step-name {
+      font-size: 12px; color: var(--text); font-weight: 500;
+      flex: 1; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .step-value {
+      font-size: 11px; font-weight: 700; color: var(--accent2);
+      font-family: 'DM Mono', monospace; margin-left: 8px;
+    }
+
+    /* ── Loading State ── */
+    .loading {
+      text-align: center; padding: 40px 20px; color: var(--sub);
+      font-size: 14px;
+    }
 
 /* ── Responsive ── */
     @media (max-width: 600px) {
