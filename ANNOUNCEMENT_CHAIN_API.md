@@ -1,3 +1,16 @@
+# VIGTIG OPDATERING PÅKRÆVET!
+
+Denne fil er fra v3.4.0 og skal opdateres til v3.7.0 efter Phase 8 implementation.
+
+Verificer efter Phase 8:
+- Er announcement chain API stadig relevant?
+- Passer exemplerne til nuværende implementation?
+- Skal dokumentation opdateres med nye Phase 7-8 features?
+
+Markeringen burde være tilføjet til toppen af filen.
+
+---
+
 # House Voice Announcement Chain API
 
 **Version:** 3.4.0  
