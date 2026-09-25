@@ -1960,11 +1960,6 @@ class HouseVoicePanel extends HTMLElement {
     }
     `;
   }
-}
-
-if (!customElements.get("house-voice-panel")) {
-  customElements.define("house-voice-panel", HouseVoicePanel);
-}
 
   async _loadTemplates() {
     try {
@@ -2055,4 +2050,9 @@ if (!customElements.get("house-voice-panel")) {
       console.error("[House Voice] Error creating chain from template:", e);
       this._showNotification("✗ Fejl ved oprettelse af chain", "error");
     }
-  }
+   }
+}
+
+if (!customElements.get("house-voice-panel")) {
+  customElements.define("house-voice-panel", HouseVoicePanel);
+}
