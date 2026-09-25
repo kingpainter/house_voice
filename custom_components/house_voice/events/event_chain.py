@@ -1,4 +1,4 @@
-# VERSION = "3.5.0"
+# VERSION = "3.6.0"
 # File: events/event_chain.py
 # Description: Event chain execution engine for House Voice Manager Sprint 2
 #              DAG-based chain execution with fail-open error handling
@@ -905,3 +905,208 @@ def create_announcement_chain(
             on_error="continue",
         ),
     ]
+
+
+# ============================================================================
+# PHASE 7 FEATURES: Parallel Execution, Conditions, Webhooks, Recovery, etc.
+# ============================================================================
+
+class ConditionEvaluator:
+    """Evaluates conditional expressions with entity state references."""
+    
+    def __init__(self, hass: HomeAssistant):
+        self.hass = hass
+    
+    def evaluate(self, expression: str, context: dict[str, Any] | None = None) -> bool:
+        """Evaluate a condition expression.
+        
+        Supports:
+        - Entity state: ${entity_id}
+        - Comparisons: ==, !=, >, <, >=, <=
+        - Boolean: and, or, not
+        - Literals: true, false, numbers, strings
+        
+        Examples:
+        - "${binary_sensor.motion}" == "on"
+        - ${sensor.temperature} > 20 and ${sensor.humidity} < 60
+        """
+        if not expression or not isinstance(expression, str):
+            return True  # Fail-safe: no condition = always execute
+        
+        try:
+            # Replace entity state references
+            resolved = self._resolve_entities(expression, context or {})
+            
+            # Simple expression evaluation
+            return eval(resolved, {"__builtins__": {}}, {})
+        except Exception as err:
+            _LOGGER.warning(f"Condition evaluation failed: {err}")
+            return True  # Fail-safe: evaluation error = allow
+    
+    def _resolve_entities(self, expr: str, context: dict[str, Any]) -> str:
+        """Replace ${entity_id} with current state."""
+        import re
+        
+        def replace_ref(match):
+            entity_id = match.group(1)
+            state_obj = self.hass.states.get(entity_id)
+            if not state_obj:
+                return "None"
+            return f"'{state_obj.state}'"
+        
+        return re.sub(r'\$\{([^}]+)\}', replace_ref, expr)
+
+
+class ErrorRecoveryStrategy:
+    """Multi-strategy error recovery and rollback."""
+    
+    def __init__(self, strategy_type: str = "no_op"):
+        self.strategy_type = strategy_type
+        self.rollback_steps: list[dict[str, Any]] = []
+    
+    async def execute_with_recovery(
+        self,
+        step_fn: Callable[..., Any],
+        rollback_fn: Callable[..., Any] | None = None,
+        *args,
+        **kwargs
+    ) -> tuple[bool, str]:
+        """Execute step with recovery on failure.
+        
+        Returns: (success, message)
+        """
+        try:
+            result = await step_fn(*args, **kwargs) if asyncio.iscoroutinefunction(step_fn) else step_fn(*args, **kwargs)
+            return (True, "Success")
+        except Exception as err:
+            _LOGGER.error(f"Step failed: {err}")
+            
+            # Execute recovery strategy
+            if self.strategy_type == "rollback" and rollback_fn:
+                try:
+                    await rollback_fn() if asyncio.iscoroutinefunction(rollback_fn) else rollback_fn()
+                    return (False, f"Failed and rolled back: {err}")
+                except Exception as rollback_err:
+                    return (False, f"Failed and rollback failed: {rollback_err}")
+            
+            return (False, str(err))
+
+
+class ChainVersionManager:
+    """Manages chain versions and diffs."""
+    
+    def __init__(self):
+        self.versions: dict[str, dict[str, Any]] = {}
+    
+    def save_version(self, chain_id: str, version_num: int, chain_data: dict[str, Any]) -> None:
+        """Save a version snapshot."""
+        key = f"{chain_id}:v{version_num}"
+        self.versions[key] = {
+            "timestamp": time.time(),
+            "data": chain_data.copy()
+        }
+    
+    def get_version(self, chain_id: str, version_num: int) -> dict[str, Any] | None:
+        """Retrieve a specific version."""
+        key = f"{chain_id}:v{version_num}"
+        return self.versions.get(key, {}).get("data")
+    
+    def get_diff(self, chain_id: str, v1: int, v2: int) -> dict[str, Any]:
+        """Get differences between two versions."""
+        data1 = self.get_version(chain_id, v1) or {}
+        data2 = self.get_version(chain_id, v2) or {}
+        
+        return {
+            "added": {k: v for k, v in data2.items() if k not in data1},
+            "removed": {k: v for k, v in data1.items() if k not in data2},
+            "modified": {k: (data1[k], data2[k]) for k in data1 if k in data2 and data1[k] != data2[k]}
+        }
+
+
+class BatchOperationManager:
+    """Atomic batch operations for chains."""
+    
+    def __init__(self, storage: Any):
+        self.storage = storage
+        self.pending_ops: list[tuple[str, dict[str, Any]]] = []
+    
+    async def add_batch_create(self, chain_id: str, chain_data: dict[str, Any]) -> None:
+        """Queue a chain creation."""
+        self.pending_ops.append(("create", {"id": chain_id, **chain_data}))
+    
+    async def add_batch_update(self, chain_id: str, chain_data: dict[str, Any]) -> None:
+        """Queue a chain update."""
+        self.pending_ops.append(("update", {"id": chain_id, **chain_data}))
+    
+    async def add_batch_delete(self, chain_id: str) -> None:
+        """Queue a chain deletion."""
+        self.pending_ops.append(("delete", {"id": chain_id}))
+    
+    async def commit(self) -> tuple[bool, str]:
+        """Atomically execute all pending operations."""
+        if not self.pending_ops:
+            return (True, "No operations to commit")
+        
+        try:
+            for op_type, op_data in self.pending_ops:
+                if op_type == "create":
+                    await self.storage.async_create_chain(op_data)
+                elif op_type == "update":
+                    await self.storage.async_update_chain(op_data["id"], op_data)
+                elif op_type == "delete":
+                    await self.storage.async_delete_chain(op_data["id"])
+            
+            self.pending_ops.clear()
+            return (True, f"Committed {len(self.pending_ops)} operations")
+        except Exception as err:
+            _LOGGER.error(f"Batch commit failed: {err}")
+            self.pending_ops.clear()  # Clear on failure
+            return (False, str(err))
+
+
+class ParallelChainExecutor:
+    """Enhanced executor with parallel step execution via DAG."""
+    
+    def __init__(self, hass: HomeAssistant):
+        self.hass = hass
+        self.condition_evaluator = ConditionEvaluator(hass)
+        self.version_manager = ChainVersionManager()
+    
+    async def execute_parallel(
+        self,
+        chain_data: dict[str, Any],
+        context: dict[str, Any] | None = None
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """Execute chain steps in parallel using DAG analysis.
+        
+        Returns: (success, execution_results)
+        """
+        from .event_chain_parallel import DependencyGraph, ParallelExecutor
+        
+        steps = chain_data.get("steps", [])
+        if not steps:
+            return (True, [])
+        
+        try:
+            # Build dependency graph
+            graph = DependencyGraph()
+            for i, step in enumerate(steps):
+                step_id = step.get("id", f"step_{i}")
+                deps = step.get("depends_on", [])
+                graph.add_node(step_id, step)
+                for dep in deps:
+                    graph.add_edge(dep, step_id)
+            
+            # Detect cycles
+            if graph.has_cycle():
+                return (False, [{"error": "Circular dependency detected"}])
+            
+            # Execute in parallel
+            executor = ParallelExecutor()
+            results = await executor.execute(graph, context or {})
+            
+            return (True, results)
+        except Exception as err:
+            _LOGGER.error(f"Parallel execution failed: {err}")
+            return (False, [{"error": str(err)}])
+

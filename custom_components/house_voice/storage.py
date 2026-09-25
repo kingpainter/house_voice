@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.6.0"
 # File: storage.py
 # Description: HA Storage API wrapper for House Voice Manager.
 #              Persists voice events, groups and conditions.
@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_CONDITIONS_KEY, STORAGE_KEY, STORAGE_VERSION
+import time
 
 
 class HouseVoiceStorage:
@@ -310,3 +311,53 @@ class HouseVoiceExecutionHistory:
             await self.async_save()
         
         return len(to_delete)
+
+    # ============================================================================
+    # PHASE 7: Chain Versioning
+    # ============================================================================
+    
+    def get_version(self, chain_id: str, version_num: int) -> dict[str, Any] | None:
+        """Retrieve a specific version of a chain."""
+        versions = self._store.data.get(f"versions_{chain_id}", {})
+        return versions.get(str(version_num))
+    
+    def list_versions(self, chain_id: str) -> list[dict[str, Any]]:
+        """List all versions of a chain."""
+        versions = self._store.data.get(f"versions_{chain_id}", {})
+        return [
+            {"version": int(v), "data": data}
+            for v, data in sorted(versions.items())
+        ]
+    
+    async def async_save_version(
+        self,
+        chain_id: str,
+        version_num: int,
+        chain_data: dict[str, Any]
+    ) -> None:
+        """Save a version snapshot of a chain."""
+        versions_key = f"versions_{chain_id}"
+        if versions_key not in self._store.data:
+            self._store.data[versions_key] = {}
+        
+        self._store.data[versions_key][str(version_num)] = {
+            "timestamp": time.time(),
+            "data": chain_data.copy()
+        }
+        
+        await self._store.async_save(self._store.data)
+    
+    async def async_rollback_to_version(
+        self,
+        chain_id: str,
+        version_num: int
+    ) -> bool:
+        """Rollback a chain to a previous version."""
+        version_data = self.get_version(chain_id, version_num)
+        if not version_data:
+            return False
+        
+        # Restore the chain data
+        await self.async_update_chain(chain_id, version_data.get("data", {}))
+        return True
+

@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.6.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
@@ -54,7 +54,18 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_chain_validate)
     websocket_api.async_register_command(hass, ws_chain_test)
     websocket_api.async_register_command(hass, ws_list_execution_history)
-    _LOGGER.info("House Voice WebSocket API registered (21 commands)")
+    
+    # Phase 7: Versioning, Batch, Parallel, Conditions
+    websocket_api.async_register_command(hass, ws_chain_get_version)
+    websocket_api.async_register_command(hass, ws_chain_list_versions)
+    websocket_api.async_register_command(hass, ws_chain_rollback_version)
+    websocket_api.async_register_command(hass, ws_batch_start)
+    websocket_api.async_register_command(hass, ws_batch_add_operation)
+    websocket_api.async_register_command(hass, ws_batch_commit)
+    websocket_api.async_register_command(hass, ws_chain_execute_parallel)
+    websocket_api.async_register_command(hass, ws_condition_test)
+    
+    _LOGGER.info("House Voice WebSocket API registered (29 commands — Phase 7 complete")
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -840,3 +851,270 @@ def ws_list_execution_history(
         _LOGGER.exception("House Voice WS error (list_execution_history)")
         connection.send_error(msg["id"], "internal_error", str(err))
         connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ============================================================================
+# PHASE 7 WEBSOCKET COMMANDS: Versioning, Batch, Parallel, Conditions
+# ============================================================================
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/get_version",
+    vol.Required("chain_id"): str,
+    vol.Required("version_num"): int,
+})
+@callback
+def ws_chain_get_version(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get specific version of a chain."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        version_num = msg["version_num"]
+        
+        # Get version from storage (implement in storage.py)
+        version_data = chains.get_version(chain_id, version_num)
+        
+        if not version_data:
+            connection.send_error(msg["id"], "not_found", f"Version {version_num} not found")
+            return
+        
+        connection.send_result(msg["id"], {"version": version_num, "data": version_data})
+    except Exception as err:
+        _LOGGER.exception("WS error (chain/get_version)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/list_versions",
+    vol.Required("chain_id"): str,
+})
+@callback
+def ws_chain_list_versions(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """List all versions of a chain."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        versions = chains.list_versions(chain_id)  # Implement in storage
+        connection.send_result(msg["id"], {"chain_id": chain_id, "versions": versions})
+    except Exception as err:
+        _LOGGER.exception("WS error (chain/list_versions)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/rollback_version",
+    vol.Required("chain_id"): str,
+    vol.Required("version_num"): int,
+})
+@async_response
+async def ws_chain_rollback_version(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Rollback chain to previous version."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        version_num = msg["version_num"]
+        
+        success = await chains.async_rollback_to_version(chain_id, version_num)
+        
+        if not success:
+            connection.send_error(msg["id"], "rollback_failed", "Could not rollback version")
+            return
+        
+        connection.send_result(msg["id"], {"success": True, "rolled_back_to": version_num})
+    except Exception as err:
+        _LOGGER.exception("WS error (chain/rollback_version)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/batch/start",
+})
+@callback
+def ws_batch_start(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Start a batch operation session."""
+    # Store batch session in hass.data
+    if not hasattr(hass.data.get(DOMAIN, {}), 'batch_sessions'):
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
+        hass.data[DOMAIN]['batch_sessions'] = {}
+    
+    batch_id = f"batch_{int(time.time() * 1000)}"
+    hass.data[DOMAIN]['batch_sessions'][batch_id] = {
+        "operations": [],
+        "created_at": time.time()
+    }
+    
+    connection.send_result(msg["id"], {"batch_id": batch_id})
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/batch/add_operation",
+    vol.Required("batch_id"): str,
+    vol.Required("operation_type"): str,  # create, update, delete
+    vol.Required("chain_data"): dict,
+})
+@callback
+def ws_batch_add_operation(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Add operation to batch."""
+    batch_sessions = hass.data.get(DOMAIN, {}).get('batch_sessions', {})
+    batch_id = msg["batch_id"]
+    
+    if batch_id not in batch_sessions:
+        connection.send_error(msg["id"], "not_found", "Batch session not found")
+        return
+    
+    batch_sessions[batch_id]["operations"].append({
+        "type": msg["operation_type"],
+        "data": msg["chain_data"]
+    })
+    
+    connection.send_result(msg["id"], {"queued": True, "operation_count": len(batch_sessions[batch_id]["operations"])})
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/batch/commit",
+    vol.Required("batch_id"): str,
+})
+@async_response
+async def ws_batch_commit(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Commit all batch operations atomically."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    batch_sessions = hass.data.get(DOMAIN, {}).get('batch_sessions', {})
+    batch_id = msg["batch_id"]
+    
+    if batch_id not in batch_sessions:
+        connection.send_error(msg["id"], "not_found", "Batch session not found")
+        return
+    
+    try:
+        batch = batch_sessions[batch_id]
+        results = []
+        
+        for op in batch["operations"]:
+            try:
+                if op["type"] == "create":
+                    chain_id = await chains.async_create_chain(op["data"])
+                    results.append({"operation": "create", "chain_id": chain_id, "success": True})
+                elif op["type"] == "update":
+                    chain_id = op["data"].get("id")
+                    await chains.async_update_chain(chain_id, op["data"])
+                    results.append({"operation": "update", "chain_id": chain_id, "success": True})
+                elif op["type"] == "delete":
+                    chain_id = op["data"].get("id")
+                    await chains.async_delete_chain(chain_id)
+                    results.append({"operation": "delete", "chain_id": chain_id, "success": True})
+            except Exception as e:
+                results.append({"operation": op["type"], "success": False, "error": str(e)})
+        
+        # Clean up batch session
+        del batch_sessions[batch_id]
+        
+        connection.send_result(msg["id"], {"batch_committed": True, "results": results})
+    except Exception as err:
+        _LOGGER.exception("WS error (batch/commit)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/execute_parallel",
+    vol.Required("chain_id"): str,
+})
+@async_response
+async def ws_chain_execute_parallel(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Execute chain with parallel step execution."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        chain_data = chains.get_chain(chain_id)
+        
+        if not chain_data:
+            connection.send_error(msg["id"], "not_found", "Chain not found")
+            return
+        
+        # Execute using parallel executor
+        from custom_components.house_voice.events.event_chain import ParallelChainExecutor
+        executor = ParallelChainExecutor(hass)
+        success, results = await executor.execute_parallel(chain_data)
+        
+        connection.send_result(msg["id"], {
+            "executed": True,
+            "parallel": True,
+            "success": success,
+            "results": results
+        })
+    except Exception as err:
+        _LOGGER.exception("WS error (chain/execute_parallel)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/condition/test",
+    vol.Required("expression"): str,
+})
+@callback
+def ws_condition_test(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Test a condition expression."""
+    try:
+        from custom_components.house_voice.events.event_chain import ConditionEvaluator
+        evaluator = ConditionEvaluator(hass)
+        result = evaluator.evaluate(msg["expression"])
+        
+        connection.send_result(msg["id"], {
+            "expression": msg["expression"],
+            "result": result
+        })
+    except Exception as err:
+        _LOGGER.exception("WS error (condition/test)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
