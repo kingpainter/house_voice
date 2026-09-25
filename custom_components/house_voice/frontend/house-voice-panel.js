@@ -1141,6 +1141,7 @@ class HouseVoicePanel extends HTMLElement {
   _render() {
     const isEvents  = this._tab === "events";
     const isGroups  = this._tab === "groups";
+    const isChains  = this._tab === "chains";
     const isHistory = this._tab === "history";
 
     this.shadowRoot.innerHTML = `
