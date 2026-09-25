@@ -170,3 +170,18 @@ def sample_event():
         "volume":     0.35,
         "conditions": [],
     }
+
+
+@pytest.fixture
+def mock_chains(mock_hass):
+    """Return a HouseVoiceChains with mocked Store."""
+    from custom_components.house_voice.storage import HouseVoiceChains
+    mock_store = MagicMock()
+    mock_store.async_load = AsyncMock(return_value=None)
+    mock_store.async_save = AsyncMock()
+
+    with patch("custom_components.house_voice.storage.Store", return_value=mock_store):
+        chains = HouseVoiceChains(mock_hass)
+        chains.store = mock_store
+        chains.data = {}
+        yield chains

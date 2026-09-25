@@ -298,37 +298,25 @@ def test_ws_condition_test():
 
 # Storage tests
 @pytest.mark.asyncio
-async def test_storage_save_version(hass: HomeAssistant):
+async def test_storage_save_version(mock_chains):
     """Test saving chain version in storage."""
-    from custom_components.house_voice.storage import HouseVoiceChains
+    await mock_chains.async_save_version("chain_1", 1, {"name": "Test"})
     
-    mock_store = MagicMock()
-    mock_store.data = {}
-    mock_store.async_save = AsyncMock()
-    
-    chains = HouseVoiceChains(hass)
-    
-    await chains.async_save_version("chain_1", 1, {"name": "Test"})
-    
-    assert "versions_chain_1" in mock_store.data
-    assert mock_store.async_save.called
+    assert "versions_chain_1" in mock_chains.data
+    assert mock_chains.store.async_save.called
 
 
 @pytest.mark.asyncio
-async def test_storage_list_versions(hass: HomeAssistant):
+async def test_storage_list_versions(mock_chains):
     """Test listing versions in storage."""
-    from custom_components.house_voice.storage import HouseVoiceChains
-    
-    mock_store = MagicMock()
-    mock_store.data = {
+    mock_chains.data = {
         "versions_chain_1": {
             "1": {"data": {"name": "Test1"}},
             "2": {"data": {"name": "Test2"}},
         }
     }
     
-    chains = HouseVoiceChains(hass)
-    versions = chains.list_versions("chain_1")
+    versions = mock_chains.list_versions("chain_1")
     
     assert len(versions) == 2
     assert versions[0]["version"] == 1

@@ -337,6 +337,9 @@ async def test_e2e_announcement_with_actual_event_engine_integration(mock_hass, 
     
     # Verify storage.get_event was called to fetch the event
     mock_engine.storage.get_event.assert_called_with("test_announcement")
+    
+    # Stop engine to cancel background task
+    await mock_engine.stop()
 
 
 @pytest.mark.asyncio

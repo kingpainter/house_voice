@@ -188,7 +188,7 @@ async def test_ws_chain_create_not_ready(hass: HomeAssistant):
     
     connection = MagicMock(spec=websocket_api.ActiveConnection)
     
-    with patch("custom_components.house_voice.websocket._get_chains", return_value=None):
+    with patch("custom_components.house_voice.websocket._get_chains", return_value=None),          patch("custom_components.house_voice.websocket._get_chain_validator", return_value=None):
         from custom_components.house_voice.websocket import ws_chain_create
         await ws_chain_create(hass, connection, msg)
     
