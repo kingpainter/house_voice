@@ -921,7 +921,7 @@ def ws_chain_list_versions(
     vol.Required("chain_id"): str,
     vol.Required("version_num"): int,
 })
-@async_response
+@websocket_api.async_response
 async def ws_chain_rollback_version(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -1006,7 +1006,7 @@ def ws_batch_add_operation(
     "type": f"{DOMAIN}/batch/commit",
     vol.Required("batch_id"): str,
 })
-@async_response
+@websocket_api.async_response
 async def ws_batch_commit(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -1058,7 +1058,7 @@ async def ws_batch_commit(
     "type": f"{DOMAIN}/chain/execute_parallel",
     vol.Required("chain_id"): str,
 })
-@async_response
+@websocket_api.async_response
 async def ws_chain_execute_parallel(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
