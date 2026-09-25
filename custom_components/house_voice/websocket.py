@@ -1,4 +1,4 @@
-# VERSION = "3.8.0"
+# VERSION = "3.11.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
@@ -70,7 +70,13 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_query_executions)
     websocket_api.async_register_command(hass, ws_get_execution_detail)
     
-    _LOGGER.info("House Voice WebSocket API registered (32 commands — Phase 8 in progress")
+    # Phase 9: Advanced Analytics Dashboard
+    websocket_api.async_register_command(hass, ws_get_analytics_statistics)
+    websocket_api.async_register_command(hass, ws_get_chain_performance)
+    websocket_api.async_register_command(hass, ws_get_step_analytics)
+    websocket_api.async_register_command(hass, ws_get_execution_timeline)
+    
+    _LOGGER.info("House Voice WebSocket API registered (36 commands — Phase 9 in progress")
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -1274,17 +1280,14 @@ def ws_get_analytics_statistics(
     Returns:
     {
         "total_executions": int,
-        "success_rate": float,
+        "success_count": int,
         "failed_executions": int,
-        "avg_duration_seconds": float,
-        "min_duration_seconds": float,
-        "max_duration_seconds": float,
-        "step_type_distribution": {step_type: count},
-        "execution_trend": [{date, count, success_rate}]
+        "success_rate": float,
+        "avg_duration_seconds": float
     }
     """
     try:
-        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        from .analytics import HouseVoiceAnalytics
         
         history = _get_execution_history(hass)
         if not history:
@@ -1318,10 +1321,10 @@ def ws_get_chain_performance(
 ) -> None:
     """Get per-chain performance metrics.
     
-    Returns: [{chain_id, chain_name, executions, success_rate, avg_duration_seconds, last_execution}]
+    Returns: [{chain_id, chain_name, executions, success_rate, avg_duration_seconds}]
     """
     try:
-        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        from .analytics import HouseVoiceAnalytics
         
         history = _get_execution_history(hass)
         if not history:
@@ -1356,14 +1359,14 @@ def ws_get_step_analytics(
     
     Returns:
     {
-        "slowest_steps": [{step_type, avg_duration_seconds, total_runs}],
-        "fastest_steps": [...],
-        "most_used_steps": [...],
-        "failing_step_types": [{step_type, failure_rate, total_runs}]
+        "top_failing_steps": [{step_name, failure_rate, failures}],
+        "slowest_steps": [{step_name, avg_duration_seconds, executions}],
+        "most_used_steps": [{step_name, executions}],
+        "step_type_distribution": {step_type: count}
     }
     """
     try:
-        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        from .analytics import HouseVoiceAnalytics
         
         history = _get_execution_history(hass)
         if not history:
@@ -1396,10 +1399,10 @@ def ws_get_execution_timeline(
 ) -> None:
     """Get Gantt chart data for execution timeline visualization.
     
-    Returns: {chain_id, executions: [{exec_id, started, finished, duration_seconds, steps}]}
+    Returns: [{exec_id, started, finished, duration_seconds, status, step_count}]
     """
     try:
-        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        from .analytics import HouseVoiceAnalytics
         
         history = _get_execution_history(hass)
         if not history:

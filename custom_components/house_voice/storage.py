@@ -347,6 +347,253 @@ class HouseVoiceExecutionHistory:
             await self.async_save()
         
         return len(to_delete)
+    def get_statistics(self, chain_id: str | None = None, start_date: str | None = None, end_date: str | None = None) -> dict:
+        """Return aggregated statistics for executions.
+        
+        Args:
+            chain_id: Optional chain ID to filter by
+            start_date: Optional ISO date string to filter from
+            end_date: Optional ISO date string to filter to
+            
+        Returns:
+            dict with: total_executions, success_count, failed_count, success_rate, avg_duration_seconds
+        """
+        from datetime import datetime
+        
+        executions = list(self.data.values())
+        
+        # Filter by chain_id if provided
+        if chain_id:
+            executions = [e for e in executions if e.get("chain_id") == chain_id]
+        
+        # Filter by date range if provided
+        if start_date:
+            executions = [e for e in executions if e.get("started", "") >= start_date]
+        if end_date:
+            executions = [e for e in executions if e.get("started", "") <= end_date]
+        
+        # Only count completed/failed executions (not in_progress)
+        completed = [e for e in executions if e.get("status") in ("completed", "failed", "blocked_condition")]
+        successful = [e for e in completed if e.get("status") == "completed"]
+        failed = [e for e in completed if e.get("status") in ("failed", "blocked_condition")]
+        
+        # Calculate average duration
+        durations = []
+        for exec_record in completed:
+            started = exec_record.get("started")
+            finished = exec_record.get("finished")
+            if started and finished:
+                try:
+                    start_dt = datetime.fromisoformat(started.replace('Z', '+00:00'))
+                    finish_dt = datetime.fromisoformat(finished.replace('Z', '+00:00'))
+                    duration_seconds = (finish_dt - start_dt).total_seconds()
+                    if duration_seconds >= 0:
+                        durations.append(duration_seconds)
+                except (ValueError, AttributeError):
+                    pass
+        
+        avg_duration = sum(durations) / len(durations) if durations else 0
+        total = len(completed)
+        success_rate = (len(successful) / total * 100) if total > 0 else 0
+        
+        return {
+            "total_executions": total,
+            "success_count": len(successful),
+            "failed_executions": len(failed),
+            "success_rate": round(success_rate, 1),
+            "avg_duration_seconds": round(avg_duration, 2),
+        }
+
+    def get_chain_performance(self, start_date: str | None = None, end_date: str | None = None) -> list[dict]:
+        """Return per-chain performance metrics.
+        
+        Returns list of dicts with: chain_id, chain_name, executions, success_rate, avg_duration_seconds
+        """
+        from datetime import datetime
+        
+        executions = list(self.data.values())
+        
+        # Filter by date range
+        if start_date:
+            executions = [e for e in executions if e.get("started", "") >= start_date]
+        if end_date:
+            executions = [e for e in executions if e.get("started", "") <= end_date]
+        
+        # Group by chain_id
+        chains_data = {}
+        for exec_record in executions:
+            if exec_record.get("status") not in ("completed", "failed", "blocked_condition"):
+                continue
+            
+            chain_id = exec_record.get("chain_id", "unknown")
+            if chain_id not in chains_data:
+                chains_data[chain_id] = {
+                    "total": 0,
+                    "successful": 0,
+                    "durations": [],
+                }
+            
+            chains_data[chain_id]["total"] += 1
+            if exec_record.get("status") == "completed":
+                chains_data[chain_id]["successful"] += 1
+            
+            # Calculate duration
+            started = exec_record.get("started")
+            finished = exec_record.get("finished")
+            if started and finished:
+                try:
+                    start_dt = datetime.fromisoformat(started.replace('Z', '+00:00'))
+                    finish_dt = datetime.fromisoformat(finished.replace('Z', '+00:00'))
+                    duration_seconds = (finish_dt - start_dt).total_seconds()
+                    if duration_seconds >= 0:
+                        chains_data[chain_id]["durations"].append(duration_seconds)
+                except (ValueError, AttributeError):
+                    pass
+        
+        # Build result list
+        result = []
+        for chain_id, data in chains_data.items():
+            success_rate = (data["successful"] / data["total"] * 100) if data["total"] > 0 else 0
+            avg_duration = sum(data["durations"]) / len(data["durations"]) if data["durations"] else 0
+            
+            result.append({
+                "chain_id": chain_id,
+                "chain_name": chain_id,  # TODO: lookup from chains storage if available
+                "executions": data["total"],
+                "success_rate": round(success_rate, 1),
+                "avg_duration_seconds": round(avg_duration, 2),
+            })
+        
+        # Sort by avg_duration (slowest first)
+        result.sort(key=lambda x: x["avg_duration_seconds"], reverse=True)
+        
+        return result
+
+    def get_step_analytics(self, start_date: str | None = None, end_date: str | None = None) -> dict:
+        """Return step-level analytics: top failing, slowest, most-used steps.
+        
+        Returns dict with: top_failing_steps, slowest_steps, most_used_steps, step_type_distribution
+        """
+        from datetime import datetime
+        from collections import Counter
+        
+        executions = list(self.data.values())
+        
+        # Filter by date range
+        if start_date:
+            executions = [e for e in executions if e.get("started", "") >= start_date]
+        if end_date:
+            executions = [e for e in executions if e.get("started", "") <= end_date]
+        
+        step_stats = {}  # {step_name: {total: N, failed: N, durations: [...]}}
+        step_types = Counter()
+        
+        for exec_record in executions:
+            steps = exec_record.get("steps", [])
+            for step in steps:
+                step_name = step.get("name", "unknown")
+                step_type = step.get("type", "unknown")
+                step_status = step.get("status", "unknown")
+                step_duration = step.get("duration", 0)
+                
+                if step_name not in step_stats:
+                    step_stats[step_name] = {"total": 0, "failed": 0, "durations": []}
+                
+                step_stats[step_name]["total"] += 1
+                if step_status in ("failed", "error"):
+                    step_stats[step_name]["failed"] += 1
+                if isinstance(step_duration, (int, float)) and step_duration >= 0:
+                    step_stats[step_name]["durations"].append(step_duration)
+                
+                step_types[step_type] += 1
+        
+        # Top failing steps
+        top_failing = []
+        for step_name, stats in step_stats.items():
+            if stats["total"] > 0:
+                failure_rate = (stats["failed"] / stats["total"] * 100)
+                if stats["failed"] > 0:  # Only include steps that have failed at least once
+                    top_failing.append({
+                        "name": step_name,
+                        "failures": stats["failed"],
+                        "failure_rate": round(failure_rate, 1),
+                    })
+        top_failing.sort(key=lambda x: x["failures"], reverse=True)
+        
+        # Slowest steps
+        slowest = []
+        for step_name, stats in step_stats.items():
+            if stats["durations"]:
+                avg_duration = sum(stats["durations"]) / len(stats["durations"])
+                slowest.append({
+                    "name": step_name,
+                    "avg_duration": round(avg_duration, 2),
+                    "executions": len(stats["durations"]),
+                })
+        slowest.sort(key=lambda x: x["avg_duration"], reverse=True)
+        
+        # Most used steps
+        most_used = []
+        for step_name, stats in step_stats.items():
+            most_used.append({
+                "name": step_name,
+                "executions": stats["total"],
+            })
+        most_used.sort(key=lambda x: x["executions"], reverse=True)
+        
+        return {
+            "top_failing_steps": top_failing[:10],
+            "slowest_steps": slowest[:10],
+            "most_used_steps": most_used[:10],
+            "step_type_distribution": dict(step_types),
+        }
+
+    def get_timeline(self, chain_id: str | None = None, limit: int = 50) -> list[dict]:
+        """Return ordered timeline data for visualization (Gantt chart).
+        
+        Returns list of execution records sorted by start time (newest first), with calculated duration.
+        """
+        from datetime import datetime
+        
+        executions = list(self.data.values())
+        
+        # Filter by chain_id if provided
+        if chain_id:
+            executions = [e for e in executions if e.get("chain_id") == chain_id]
+        
+        # Only include completed/failed executions (not in_progress)
+        executions = [e for e in executions if e.get("status") in ("completed", "failed", "blocked_condition")]
+        
+        # Sort by started time (newest first)
+        executions.sort(key=lambda e: e.get("started", ""), reverse=True)
+        
+        # Calculate duration and format for timeline
+        timeline = []
+        for exec_record in executions[:limit]:
+            started = exec_record.get("started")
+            finished = exec_record.get("finished")
+            duration = 0
+            
+            if started and finished:
+                try:
+                    start_dt = datetime.fromisoformat(started.replace('Z', '+00:00'))
+                    finish_dt = datetime.fromisoformat(finished.replace('Z', '+00:00'))
+                    duration = (finish_dt - start_dt).total_seconds()
+                except (ValueError, AttributeError):
+                    pass
+            
+            timeline.append({
+                "id": exec_record.get("id"),
+                "chain_id": exec_record.get("chain_id"),
+                "started": started,
+                "finished": finished,
+                "duration_seconds": round(duration, 2),
+                "status": exec_record.get("status"),
+                "step_count": len(exec_record.get("steps", [])),
+            })
+        
+        return timeline
+
 
     # ============================================================================
     # PHASE 7: Chain Versioning
