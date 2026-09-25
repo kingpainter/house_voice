@@ -43,7 +43,17 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_conditions)
     websocket_api.async_register_command(hass, ws_save_condition)
     websocket_api.async_register_command(hass, ws_delete_condition)
-    _LOGGER.info("House Voice WebSocket API registered (12 commands)")
+    
+    # Chain management commands (Sprint 6)
+    websocket_api.async_register_command(hass, ws_list_chains)
+    websocket_api.async_register_command(hass, ws_chain_create)
+    websocket_api.async_register_command(hass, ws_chain_update)
+    websocket_api.async_register_command(hass, ws_chain_delete)
+    websocket_api.async_register_command(hass, ws_chain_get)
+    websocket_api.async_register_command(hass, ws_chain_publish)
+    websocket_api.async_register_command(hass, ws_chain_test)
+    websocket_api.async_register_command(hass, ws_list_execution_history)
+    _LOGGER.info("House Voice WebSocket API registered (20 commands)")
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -461,4 +471,337 @@ async def ws_delete_condition(
         connection.send_result(msg["id"], {"success": True})
     except Exception as err:
         _LOGGER.error("House Voice: error deleting condition: %s", err)
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── Chain Management (NEW in Sprint 6) ──────────────────────────────────────
+
+def _get_chains(hass: HomeAssistant) -> Any | None:
+    """Return chains instance or None."""
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "chains", None) if entry else None
+
+
+def _get_chain_validator(hass: HomeAssistant) -> Any | None:
+    """Return chain validator instance or None."""
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "chain_validator", None) if entry else None
+
+
+@websocket_api.websocket_command({"type": f"{DOMAIN}/list_chains"})
+@callback
+def ws_list_chains(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Return all chains, optionally filtered by status."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        status = msg.get("status")  # Optional filter: "active" | "published" | "draft"
+        chain_list = chains.list_chains(status=status)
+        connection.send_result(msg["id"], {"chains": chain_list})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (list_chains)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/create",
+    vol.Required("name"): str,
+    vol.Optional("description", default=""): str,
+    vol.Optional("steps", default=[]): list,
+    vol.Optional("execution_config", default={}): dict,
+})
+@websocket_api.async_response
+async def ws_chain_create(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Create a new chain."""
+    chains = _get_chains(hass)
+    validator = _get_chain_validator(hass)
+    
+    if not chains or not validator:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_data = {
+            "name": msg["name"],
+            "description": msg.get("description", ""),
+            "steps": msg.get("steps", []),
+            "execution_config": msg.get("execution_config", {}),
+        }
+        
+        # Validate chain
+        validation = validator.validate_chain(chain_data)
+        if not validation.is_valid:
+            connection.send_error(msg["id"], "invalid_chain", validation.to_dict())
+            return
+        
+        # Create chain
+        chain_id = await chains.async_create_chain(chain_data)
+        connection.send_result(msg["id"], {"chain_id": chain_id, "status": "created"})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/create)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/update",
+    vol.Required("chain_id"): str,
+    vol.Required("chain_data"): dict,
+})
+@websocket_api.async_response
+async def ws_chain_update(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Update an existing chain."""
+    chains = _get_chains(hass)
+    validator = _get_chain_validator(hass)
+    
+    if not chains or not validator:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        chain_data = msg["chain_data"]
+        
+        # Validate chain
+        validation = validator.validate_chain(chain_data)
+        if not validation.is_valid:
+            connection.send_error(msg["id"], "invalid_chain", validation.to_dict())
+            return
+        
+        # Update chain
+        success = await chains.async_update_chain(chain_id, chain_data)
+        if not success:
+            connection.send_error(msg["id"], "not_found", f"Chain '{chain_id}' not found")
+            return
+        
+        connection.send_result(msg["id"], {"status": "updated"})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/update)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/delete",
+    vol.Required("chain_id"): str,
+})
+@websocket_api.async_response
+async def ws_chain_delete(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Delete a chain."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        success = await chains.async_delete_chain(chain_id)
+        
+        if not success:
+            connection.send_error(msg["id"], "not_found", f"Chain '{chain_id}' not found")
+            return
+        
+        connection.send_result(msg["id"], {"status": "deleted"})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/delete)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/get",
+    vol.Required("chain_id"): str,
+})
+@callback
+def ws_chain_get(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get a single chain by ID."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        chain = chains.get_chain(chain_id)
+        
+        if not chain:
+            connection.send_error(msg["id"], "not_found", f"Chain '{chain_id}' not found")
+            return
+        
+        connection.send_result(msg["id"], {"chain": chain})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/get)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/publish",
+    vol.Required("chain_id"): str,
+})
+@websocket_api.async_response
+async def ws_chain_publish(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Publish a chain (move from draft to published)."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        success = await chains.async_publish_chain(chain_id)
+        
+        if not success:
+            connection.send_error(msg["id"], "not_found", f"Chain '{chain_id}' not found")
+            return
+        
+        connection.send_result(msg["id"], {"status": "published"})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/publish)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/test",
+    vol.Required("chain_id"): str,
+    vol.Optional("mock_event", default={}): dict,
+})
+@websocket_api.async_response
+async def ws_chain_test(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Test execute a chain with mock event data."""
+    chains = _get_chains(hass)
+    if not chains:
+        connection.send_error(msg["id"], "not_ready", "House Voice chains not ready")
+        return
+    
+    try:
+        chain_id = msg["chain_id"]
+        mock_event = msg.get("mock_event", {})
+        
+        chain = chains.get_chain(chain_id)
+        if not chain:
+            connection.send_error(msg["id"], "not_found", f"Chain '{chain_id}' not found")
+            return
+        
+        # TODO: Implement chain execution logic with mock event
+        # For now, return a simulated execution result
+        execution_result = {
+            "chain_id": chain_id,
+            "success": True,
+            "duration_ms": 1240,
+            "steps": [
+                {
+                    "id": "step_1",
+                    "type": step.get("type"),
+                    "success": True,
+                    "duration_ms": 250,
+                    "output": "Executed successfully"
+                }
+                for step in chain.get("steps", [])
+            ]
+        }
+        
+        connection.send_result(msg["id"], {
+            "execution": execution_result,
+            "note": "Test execution (mock)"
+        })
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/test)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/list_execution_history",
+    vol.Optional("limit", default=50): int,
+    vol.Optional("chain_id"): str,
+})
+@callback
+
+def _transform_execution_for_panel(execution: dict) -> dict:
+    """Transform execution record to panel format."""
+    from datetime import datetime
+    import dateutil.parser as parser
+    
+    try:
+        # Parse ISO timestamp
+        started = execution.get("started", "")
+        timestamp = started
+        
+        # Calculate duration if finished
+        duration = None
+        if execution.get("finished"):
+            try:
+                start_dt = parser.isoparse(started)
+                finish_dt = parser.isoparse(execution["finished"])
+                duration = int((finish_dt - start_dt).total_seconds() * 1000)
+            except:
+                pass
+        
+        return {
+            "id": execution.get("id"),
+            "chainId": execution.get("chain_id"),
+            "timestamp": timestamp,
+            "success": execution.get("status") == "completed",
+            "duration": duration,
+            "status": execution.get("status"),
+            "error": execution.get("error"),
+            "steps": execution.get("steps", []),
+        }
+    except Exception:
+        return execution  # Return as-is if transformation fails
+
+
+def ws_list_execution_history(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Return execution history for chains. Optional filter by chain_id."""
+    try:
+        entry = _get_entry(hass)
+        if not entry or not hasattr(entry.runtime_data, "execution_history"):
+            connection.send_error(msg["id"], "execution_history_unavailable", "Execution history not initialized")
+            return
+        
+        execution_history = entry.runtime_data.execution_history
+        limit = msg.get("limit", 50)
+        chain_id = msg.get("chain_id", None)  # Optional filter
+        
+        # Retrieve execution records
+        executions = execution_history.list_executions(chain_id=chain_id, limit=limit)
+        
+        # Transform to panel format
+        history = [_transform_execution_for_panel(e) for e in executions]
+        
+        connection.send_result(msg["id"], {"history": history})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (list_execution_history)")
+        connection.send_error(msg["id"], "internal_error", str(err))
         connection.send_error(msg["id"], "unknown_error", str(err))

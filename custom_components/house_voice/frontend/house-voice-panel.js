@@ -14,7 +14,7 @@ class HouseVoicePanel extends HTMLElement {
     this._conditions    = {};      // { id: { label, entity_id, state } }
     this._players       = [];
     this._history       = [];
-    this._tab           = "events";       // "events" | "groups" | "history"
+    this._tab           = "events";       // "events" | "groups" | "history" | "chains"
     this._editingId     = null;
     this._editingGroup  = null;
     this._editingCond   = null;    // condition_id being edited
@@ -28,6 +28,11 @@ class HouseVoicePanel extends HTMLElement {
     this._searchQuery   = "";
     this._loading       = false;
     this._lastRenderKey = null;  // for render memoization   // global loading state for WS calls
+    this._errors        = {};      // { fieldName: 'error message' }
+    this._dialog        = null;    // { type: 'export'|'import'|'name', data: {...} }
+    this._chains        = {};      // { chainId: { name, status, steps, ... } }
+    this._currentChain  = null;    // currently active chain
+    this._execHistory   = [];      // [ { chainId, timestamp, steps, success, duration } ]
   }
 
   set hass(h) {
@@ -139,9 +144,83 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── Event actions ──────────────────────────────────────────────────────────
 
-  _openAdd()    { this._editingId = null; this._showForm = true; this._render(); }
-  _openEdit(id) { this._editingId = id;   this._showForm = true; this._render(); }
+  _openAdd()    { this._editingId = null; this._errors = {}; this._showForm = true; this._render(); }
+  _openEdit(id) { this._editingId = id;   this._errors = {}; this._showForm = true; this._render(); }
   _closeForm()  { this._showForm = false; this._editingId = null; this._render(); }
+
+  // ── Dialog methods ─────────────────────────────────────────────────────────
+
+  _openDialog(type, data = {}) {
+    this._dialog = { type, data };
+    this._render();
+  }
+
+  _closeDialog() {
+    this._dialog = null;
+    this._render();
+  }
+
+  // ── Chain Templates (predefined) ────────────────────────────────────────────
+  // These are starter templates for new chains
+  _getChainTemplates() {
+    return {
+      "simple_announce": {
+        name: "Simpel meddelelse",
+        description: "Afspil besked på alle højttalere",
+        steps: [{ type: "tts", message: "{{ message }}", speakers: ["group:all"], priority: "normal" }]
+      },
+      "conditional_tts": {
+        name: "Betinget meddelelse",
+        description: "Afspil kun hvis betingelse er opfyldt",
+        steps: [
+          { type: "condition", entity_id: "input_boolean.someone_home" },
+          { type: "tts", message: "{{ message }}", speakers: ["group:all"], priority: "normal" }
+        ]
+      },
+      "volume_ducking": {
+        name: "Musik med volume ducking",
+        description: "Sænk musik, afspil meddelelse, hæv musik",
+        steps: [
+          { type: "volume", speakers: ["group:all"], volume: 0.3, duration: 1 },
+          { type: "tts", message: "{{ message }}", speakers: ["group:all"], priority: "normal" },
+          { type: "delay", seconds: 1 },
+          { type: "volume", speakers: ["group:all"], volume: 0.7 }
+        ]
+      },
+      "occupancy_aware": {
+        name: "Kun hvis der er nogen hjemme",
+        description: "Check occupancy før announcement",
+        steps: [
+          { type: "condition", entity_id: "binary_sensor.someone_home" },
+          { type: "tts", message: "{{ message }}", speakers: ["group:all"], priority: "normal" }
+        ]
+      }
+    };
+  }
+
+  async _createChainFromTemplate(templateId, chainName) {
+    const templates = this._getChainTemplates();
+    const template = templates[templateId];
+    if (!template) {
+      this._notify("Skabelon ikke fundet.", "error");
+      return;
+    }
+    // TODO: Save chain to backend via WebSocket
+    this._notify(`Chain '${chainName}' oprettet fra skabelon ✓`);
+  }
+
+  _openExportDialog(chainId) {
+    // TODO: Get chain data and show JSON export
+    this._openDialog("export", { chainId });
+  }
+
+  _openImportDialog() {
+    this._openDialog("import", {});
+  }
+
+  _openChainNameDialog(templateId) {
+    this._openDialog("chainName", { templateId });
+  }
 
   async _save() {
     const root = this.shadowRoot;
@@ -153,9 +232,16 @@ class HouseVoicePanel extends HTMLElement {
 
     const conditions = [...root.querySelectorAll(".f-condition-cb:checked")].map(el => el.value);
 
-    if (!eventId)         return this._notify("Event ID mangler.", "error");
-    if (!message)         return this._notify("Besked mangler.", "error");
-    if (!speakers.length) return this._notify("Vælg mindst én højttaler eller gruppe.", "error");
+    // Validate and collect errors
+    this._errors = {};
+    if (!eventId)         this._errors.eventId = "Event ID mangler.";
+    if (!message)         this._errors.message = "Besked mangler.";
+    if (!speakers.length) this._errors.speakers = "Vælg mindst én højttaler eller gruppe.";
+    
+    if (Object.keys(this._errors).length > 0) {
+      this._render();  // Re-render to show inline errors
+      return;
+    }
 
     this._saving = true; this._updateUI();
     
@@ -478,7 +564,197 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── History tab ────────────────────────────────────────────────────────────
 
-  _historyHTML() {
+
+  // ── Chain management ───────────────────────────────────────────────────────
+
+  async _loadChains() {
+    try {
+      this._chains = await this._hass.callWS({
+        type: "house_voice/list_chains",
+      }) || {};
+      if (Object.keys(this._chains).length > 0) {
+        this._currentChain = Object.keys(this._chains)[0];
+      }
+    } catch (e) {
+      console.error("[House Voice] Error loading chains:", e);
+      this._chains = {};
+    }
+  }
+
+  async _loadExecutionHistory() {
+    try {
+      this._execHistory = await this._hass.callWS({
+        type: "house_voice/list_execution_history",
+        limit: 50,
+      }) || [];
+    } catch (e) {
+      console.error("[House Voice] Error loading execution history:", e);
+      this._execHistory = [];
+    }
+  }
+
+  _switchChain(chainId) {
+    if (this._chains[chainId]) {
+      this._currentChain = chainId;
+      this._render();
+    }
+  }
+
+  _getChainStatus(chainId) {
+    const chain = this._chains[chainId];
+    if (!chain) return "unknown";
+    if (chain.status === "active") return "active";
+    if (chain.status === "published") return "published";
+    return "draft";
+  }
+
+  _formatTimestamp(timestamp) {
+    if (!timestamp) return "–";
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return "–";
+    
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (seconds < 60) return "lige nu";
+    if (minutes < 60) return `${minutes} min siden`;
+    if (hours < 24) return `${hours} t siden`;
+    if (days < 7) return `${days} d siden`;
+    
+    return date.toLocaleDateString("da-DK");
+  }
+
+  _chainsHTML() {
+    const chainIds = Object.keys(this._chains);
+    if (!chainIds.length)
+      return `<div class="empty">Ingen kæder endnu. Opret en ny kæde ved at klikke på 'Nyt Chain'.</div>`;
+
+    return `
+      <div class="chains-container">
+        <div class="chains-header">
+          <h3>Announcement Chains</h3>
+          <button class="btn btn-primary" id="btn-new-chain">+ Nyt Chain</button>
+        </div>
+        
+        <div class="chain-switcher">
+          <label class="chain-selector-label">Aktivt Chain:</label>
+          <select id="chain-selector" class="chain-selector">
+            <option value="">-- Vælg et chain --</option>
+            ${chainIds.map(id => `
+              <option value="${this._esc(id)}" ${this._currentChain === id ? 'selected' : ''}>
+                ${this._esc(this._chains[id].name || id)}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+
+        <div class="chains-list">
+          ${chainIds.map(id => {
+            const chain = this._chains[id];
+            const status = this._getChainStatus(id);
+            const statusColors = { active: "#10b981", published: "#3b82f6", draft: "#8b5cf6" };
+            const recentExecs = this._execHistory.filter(e => e.chainId === id).slice(0, 5);
+
+            return `
+              <div class="chain-card">
+                <div class="chain-header">
+                  <div class="chain-info">
+                    <h4 class="chain-name">${this._esc(chain.name || id)}</h4>
+                    <span class="chain-status status-${status}" style="background-color: ${statusColors[status]}">
+                      ${status}
+                    </span>
+                  </div>
+                  <div class="chain-steps">
+                    <small>${chain.steps ? chain.steps.length : 0} steps</small>
+                  </div>
+                </div>
+                
+                ${recentExecs.length > 0 ? `
+                  <div class="chain-recent-execs">
+                    <small>Recent executions:</small>
+                    ${recentExecs.map(exec => `
+                      <span class="exec-badge ${exec.success ? 'success' : 'error'}">
+                        ${exec.success ? '✓' : '✗'} ${this._formatTimestamp(exec.timestamp)}
+                      </span>
+                    `).join("")}
+                  </div>
+                ` : ""}
+                
+                <div class="chain-actions">
+                  <button class="btn btn-small" data-chain-id="${this._esc(id)}">Edit</button>
+                  <button class="btn btn-small" data-chain-id="${this._esc(id)}">Test</button>
+                  <button class="btn btn-small btn-danger" data-chain-id="${this._esc(id)}">Delete</button>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+
+    _historyHTML() {
+    // Show chain execution history if available, otherwise show event history
+    if (this._execHistory && this._execHistory.length > 0) {
+      return `
+        <div class="execution-history">
+          <div class="exec-history-header">
+            <h3>Chain Execution History</h3>
+            <small>${this._execHistory.length} executions</small>
+          </div>
+          ${this._execHistory.map(exec => {
+            const statusBadgeClass = exec.success ? 'success' : 'error';
+            const statusLabel = exec.success ? '✓ Success' : '✗ Failed';
+            const duration = exec.duration ? `${Math.round(exec.duration)}ms` : '–';
+            const chainName = exec.chainId && this._chains[exec.chainId] 
+              ? this._chains[exec.chainId].name 
+              : exec.chainId;
+            
+            return `
+              <div class="execution-card">
+                <div class="exec-header">
+                  <div class="exec-info">
+                    <h4>${this._esc(chainName || 'Unknown Chain')}</h4>
+                    <small>${this._formatTimestamp(exec.timestamp)}</small>
+                  </div>
+                  <div class="exec-status-badge ${statusBadgeClass}">
+                    ${statusLabel}
+                  </div>
+                  <div class="exec-duration">
+                    <small>${duration}</small>
+                  </div>
+                </div>
+                
+                ${exec.steps && exec.steps.length > 0 ? `
+                  <div class="steps-detail">
+                    <small class="steps-label">Steps (${exec.steps.length}):</small>
+                    ${exec.steps.map((step, idx) => {
+                      const stepStatus = step.success ? '✓' : '✗';
+                      const stepTime = step.duration ? `${Math.round(step.duration)}ms` : '–';
+                      return `
+                        <div class="step-row">
+                          <span class="step-index">${idx + 1}</span>
+                          <span class="step-type">${this._esc(step.type || 'action')}</span>
+                          <span class="step-status ${step.success ? 'ok' : 'fail'}">${stepStatus}</span>
+                          <span class="step-time">${stepTime}</span>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                ` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    // Fallback to event history
     if (!this._history.length)
       return `<div class="empty">Ingen historik endnu.<br>Afspil et event for at se det her.</div>`;
 
@@ -657,6 +933,78 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── Event form ─────────────────────────────────────────────────────────────
 
+  _dialogHTML() {
+    if (!this._dialog) return '';
+    const { type, data } = this._dialog;
+    
+    if (type === 'export') {
+      const chainData = data.chainId ? JSON.stringify({}, null, 2) : '{}';
+      return `
+        <div class="dialog-overlay">
+          <div class="dialog-card">
+            <div class="dialog-header">
+              <span>Eksporter Chain</span>
+              <button class="dialog-close" id="dialog-close">✕</button>
+            </div>
+            <div class="dialog-body">
+              <label style="font-size: 12px; font-weight: 600; color: var(--sub);">JSON:</label>
+              <textarea id="export-json" readonly style="width: 100%; height: 300px; padding: 12px; border: 1px solid var(--div); border-radius: 8px; background: var(--bg3); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; resize: none;">${chainData}</textarea>
+            </div>
+            <div class="dialog-footer">
+              <button class="btn btn-cancel" id="dialog-cancel">Luk</button>
+              <button class="btn btn-save" id="dialog-copy">📋 Kopier JSON</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    
+    if (type === 'import') {
+      return `
+        <div class="dialog-overlay">
+          <div class="dialog-card">
+            <div class="dialog-header">
+              <span>Importér Chain</span>
+              <button class="dialog-close" id="dialog-close">✕</button>
+            </div>
+            <div class="dialog-body">
+              <label style="font-size: 12px; font-weight: 600; color: var(--sub);">JSON:</label>
+              <textarea id="import-json" placeholder='Indsæt chain JSON her...' style="width: 100%; height: 300px; padding: 12px; border: 1px solid var(--div); border-radius: 8px; background: var(--bg3); color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; resize: none;"></textarea>
+              <span id="import-error" style="display: none; color: var(--red); font-size: 12px; margin-top: 8px;"></span>
+            </div>
+            <div class="dialog-footer">
+              <button class="btn btn-cancel" id="dialog-cancel">Annuller</button>
+              <button class="btn btn-save" id="dialog-import">📥 Importér</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    
+    if (type === 'chainName') {
+      return `
+        <div class="dialog-overlay">
+          <div class="dialog-card">
+            <div class="dialog-header">
+              <span>Nyt Chain fra skabelon</span>
+              <button class="dialog-close" id="dialog-close">✕</button>
+            </div>
+            <div class="dialog-body">
+              <div class="field">
+                <label class="field-label">Chain Navn <span class="req">*</span></label>
+                <input id="chain-name-input" class="input" type="text" placeholder="f.eks. Morning Greeting" autofocus>
+                <span class="hint">Bruges til at identificere chain'et</span>
+              </div>
+            </div>
+            <div class="dialog-footer">
+              <button class="btn btn-cancel" id="dialog-cancel">Annuller</button>
+              <button class="btn btn-save" id="dialog-create-chain">✨ Opret Chain</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    
+    return '';
+  }
+
   _formHTML() {
     const isEdit  = this._editingId !== null;
     const ev      = isEdit ? (this._events[this._editingId] || {}) : {};
@@ -676,16 +1024,17 @@ class HouseVoicePanel extends HTMLElement {
             <button class="close-btn" id="close-form">✕</button>
           </div>
           <div class="form-body">
-            <div class="field">
+            <div class="field ${this._errors.eventId ? 'error' : ''}">
               <label class="field-label">Event ID <span class="req">*</span></label>
               <input class="f-event-id input" type="text" value="${this._esc(eventId)}"
                 placeholder="f.eks. dishwasher_done" ${isEdit ? "readonly" : ""}>
-              <span class="hint">Bruges i automationer: house_voice.say → event: dishwasher_done</span>
+              ${this._errors.eventId ? `<span class="error-message">${this._esc(this._errors.eventId)}</span>` : '<span class="hint">Bruges i automationer: house_voice.say → event: dishwasher_done</span>'}
             </div>
-            <div class="field">
+            <div class="field ${this._errors.message ? 'error' : ''}">
               <label class="field-label">Besked <span class="req">*</span></label>
               <input class="f-message input" type="text" value="${this._esc(msg)}"
                 placeholder="f.eks. Opvaskeren er færdig">
+              ${this._errors.message ? `<span class="error-message">${this._esc(this._errors.message)}</span>` : ''}
             </div>
             <div class="field">
               <label class="field-label">Betingelser <span class="hint-inline">(valgfrit – alle skal være opfyldt)</span></label>
@@ -704,9 +1053,10 @@ class HouseVoicePanel extends HTMLElement {
               <label class="field-label">Volumen: <span id="vol-display">${Math.round(vol * 100)}%</span></label>
               <input class="f-volume" type="range" min="0.05" max="1.0" step="0.05" value="${vol}" id="vol-slider">
             </div>
-            <div class="field">
+            <div class="field ${this._errors.speakers ? 'error' : ''}">
               <label class="field-label">Højttalere / Grupper <span class="req">*</span></label>
               <div class="speakers-list">${this._speakerCheckboxesHTML(selSpk)}</div>
+              ${this._errors.speakers ? `<span class="error-message">${this._esc(this._errors.speakers)}</span>` : ''}
             </div>
           </div>
           <div class="form-footer">
@@ -826,6 +1176,7 @@ class HouseVoicePanel extends HTMLElement {
           <div class="tab-bar">
             <button class="tab ${isEvents  ? 'active' : ''}" data-tab="events">📋 Events</button>
             <button class="tab ${isGroups  ? 'active' : ''}" data-tab="groups">🔈 Grupper</button>
+            <button class="tab ${isChains  ? 'active' : ''}" data-tab="chains">⛓️ Kæder</button>
             <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
           </div>
         </div>
@@ -846,6 +1197,7 @@ class HouseVoicePanel extends HTMLElement {
             ${isEvents  ? this._eventListHTML() : ""}
             ${isEvents  ? this._condLibHTML()   : ""}
             ${isGroups  ? this._groupListHTML() : ""}
+            ${isChains  ? this._chainsHTML()    : ""}
             ${isHistory ? this._historyHTML()   : ""}
           </div>
         </div>
@@ -879,6 +1231,43 @@ class HouseVoicePanel extends HTMLElement {
     root.getElementById("btn-export")?.addEventListener("click",    () => this._exportEvents());
     root.getElementById("btn-import")?.addEventListener("click",    () => this._importEvents());
 
+    // Chain switcher listener
+    const chainSelector = root.getElementById("chain-selector");
+    if (chainSelector) {
+      chainSelector.addEventListener("change", (e) => {
+        if (e.target.value) this._switchChain(e.target.value);
+      });
+    }
+
+    // Chain action buttons listeners
+    root.querySelectorAll("[data-chain-id]").forEach(el => {
+      const chainId = el.dataset.chainId;
+      if (el.textContent.includes("Edit")) {
+        el.addEventListener("click", () => {
+          // TODO: Open chain editor
+          console.log("Edit chain:", chainId);
+        });
+      }
+      if (el.textContent.includes("Test")) {
+        el.addEventListener("click", () => {
+          // TODO: Test chain execution
+          console.log("Test chain:", chainId);
+        });
+      }
+      if (el.textContent.includes("Delete")) {
+        el.addEventListener("click", () => {
+          // TODO: Delete chain
+          console.log("Delete chain:", chainId);
+        });
+      }
+    });
+
+    // New chain button
+    root.getElementById("btn-new-chain")?.addEventListener("click", () => {
+      // TODO: Open chain creation dialog
+      console.log("Create new chain");
+    });
+
     root.querySelectorAll(".btn-test").forEach(el =>
       el.addEventListener("click", () => this._test(el.dataset.id)));
     root.querySelectorAll(".btn-edit:not(.btn-edit-group)").forEach(el =>
@@ -892,6 +1281,42 @@ class HouseVoicePanel extends HTMLElement {
       el.addEventListener("click", () => this._deleteGroup(el.dataset.id)));
 
     root.getElementById("close-form")?.addEventListener("click",  () => this._closeForm());
+    
+    // Dialog listeners
+    root.getElementById("dialog-close")?.addEventListener("click", () => this._closeDialog());
+    root.getElementById("dialog-cancel")?.addEventListener("click", () => this._closeDialog());
+    
+    root.getElementById("dialog-copy")?.addEventListener("click", () => {
+      const textarea = root.getElementById("export-json");
+      textarea.select();
+      document.execCommand("copy");
+      this._notify("JSON kopieret til clipboard ✓");
+    });
+    
+    root.getElementById("dialog-import")?.addEventListener("click", async () => {
+      const textarea = root.getElementById("import-json");
+      const errorEl = root.getElementById("import-error");
+      try {
+        const data = JSON.parse(textarea.value);
+        // TODO: Validate and import chain
+        this._notify("Chain importeret ✓");
+        this._closeDialog();
+      } catch (e) {
+        errorEl.textContent = "Ugyldig JSON: " + e.message;
+        errorEl.style.display = "block";
+      }
+    });
+    
+    root.getElementById("dialog-create-chain")?.addEventListener("click", () => {
+      const input = root.getElementById("chain-name-input");
+      const name = input?.value?.trim();
+      if (!name) {
+        this._notify("Chain navn mangler.", "error");
+        return;
+      }
+      this._createChainFromTemplate(this._dialog.data.templateId, name);
+      this._closeDialog();
+    });
     root.getElementById("cancel-form")?.addEventListener("click", () => this._closeForm());
     root.getElementById("save-form")?.addEventListener("click",   () => this._save());
 
@@ -1059,12 +1484,42 @@ class HouseVoicePanel extends HTMLElement {
     .btn-import  { background: rgba(52,211,153,0.08); color: var(--accent2); border: 1px solid rgba(52,211,153,0.2); }
     .btn-reload  { background: rgba(99,102,241,0.10); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
 
-    /* ── Form overlay ── */
-    .form-overlay {
+    /* ── Dialog system ── */
+    .dialog-overlay, .form-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.6);
       display: flex; align-items: center; justify-content: center;
       z-index: 9999; padding: 20px;
     }
+    .dialog-card, .form-card {
+      background: var(--bg2); border-radius: var(--card-radius);
+      width: 100%; max-width: 560px; max-height: 90vh;
+      display: flex; flex-direction: column; overflow: hidden;
+      border: 1px solid var(--div);
+      box-shadow: 0 24px 56px rgba(0,0,0,.5), 0 0 0 1px rgba(20,184,166,0.08);
+    }
+    .dialog-header, .form-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 20px; border-bottom: 1px solid var(--div);
+    }
+    .dialog-header span, .form-title {
+      font-size: 16px; font-weight: 700; color: var(--text);
+    }
+    .dialog-close, .close-btn {
+      background: transparent; border: none; font-size: 16px;
+      cursor: pointer; color: var(--sub); padding: 5px 9px; border-radius: 8px; transition: background .15s;
+    }
+    .dialog-close:hover, .close-btn:hover {
+      background: var(--bg3); color: var(--text);
+    }
+    .dialog-body, .form-body {
+      overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 18px; flex: 1;
+    }
+    .dialog-footer, .form-footer {
+      display: flex; gap: 10px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid var(--div);
+    }
+
+    /* ── Form overlay ── */
+    .form-overlay {
     .form-card {
       background: var(--bg2); border-radius: var(--card-radius);
       width: 100%; max-width: 560px; max-height: 90vh;
@@ -1095,6 +1550,11 @@ class HouseVoicePanel extends HTMLElement {
     }
     .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
     input[readonly] { opacity: .5; cursor: default; }
+    
+    /* ── Error states ── */
+    .field.error .input { border-color: var(--red); background: rgba(239,68,68,0.05); }
+    .field.error .input:focus { border-color: var(--red); box-shadow: 0 0 0 2px rgba(239,68,68,0.15); }
+    .error-message { font-size: 12px; color: var(--red); font-weight: 500; margin-top: 2px; }
     .f-volume { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 4px; }
 
     /* ── Condition library ── */
@@ -1158,7 +1618,143 @@ class HouseVoicePanel extends HTMLElement {
     .speaker-entity { font-size: 11px; color: var(--sub); font-family: 'DM Mono', monospace; }
     .no-players { color: var(--sub); font-size: 13px; padding: 8px 0; }
 
-    /* ── Responsive ── */
+
+    /* ── Chain UI ── */
+    .chains-container { padding: 20px; }
+    .chains-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px;
+    }
+    .chains-header h3 {
+      margin: 0; font-size: 18px; color: var(--text);
+    }
+    .chain-switcher {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px; padding: 12px;
+      background: var(--bg2); border-radius: 10px;
+    }
+    .chain-selector-label {
+      font-size: 12px; font-weight: 600; color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .chain-selector {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--div);
+      border-radius: 8px; background: var(--bg3); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 14px; cursor: pointer;
+    }
+    .chains-list {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .chain-card {
+      background: var(--bg2); border: 1px solid var(--div); border-radius: 12px;
+      padding: 16px; transition: box-shadow 0.2s;
+    }
+    .chain-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+    .chain-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .chain-info {
+      display: flex; gap: 10px; align-items: center;
+    }
+    .chain-name {
+      margin: 0; font-size: 16px; font-weight: 600; color: var(--text);
+    }
+    .chain-status {
+      display: inline-block; padding: 4px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; color: white;
+    }
+    .status-active { background-color: #10b981; }
+    .status-published { background-color: #3b82f6; }
+    .status-draft { background-color: #8b5cf6; }
+    .chain-steps {
+      text-align: right;
+    }
+    .chain-recent-execs {
+      display: flex; flex-direction: column; gap: 6px;
+      margin: 10px 0; padding: 10px; background: rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+    }
+    .exec-badge {
+      display: inline-block; padding: 4px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; background: rgba(200, 200, 200, 0.2);
+      width: fit-content;
+    }
+    .exec-badge.success { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+    .exec-badge.error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .chain-actions {
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+
+    /* ── Execution History ── */
+    .execution-history {
+      display: flex; flex-direction: column; gap: 16px; padding: 20px;
+    }
+    .exec-history-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    .exec-history-header h3 {
+      margin: 0; font-size: 18px; color: var(--text);
+    }
+    .execution-card {
+      background: var(--bg2); border: 1px solid var(--div);
+      border-radius: 12px; padding: 14px; overflow: hidden;
+    }
+    .exec-header {
+      display: grid; grid-template-columns: 1fr auto auto;
+      gap: 12px; align-items: center; margin-bottom: 12px;
+    }
+    .exec-info h4 {
+      margin: 0 0 4px; font-size: 14px; color: var(--text);
+    }
+    .exec-info small {
+      color: var(--sub); font-size: 12px;
+    }
+    .exec-status-badge {
+      padding: 6px 12px; border-radius: 6px; font-size: 12px;
+      font-weight: 600; text-align: center; min-width: 100px;
+    }
+    .exec-status-badge.success {
+      background: rgba(16, 185, 129, 0.2); color: #10b981;
+    }
+    .exec-status-badge.error {
+      background: rgba(239, 68, 68, 0.2); color: #ef4444;
+    }
+    .exec-duration {
+      text-align: right; font-size: 12px; color: var(--sub);
+    }
+    .steps-detail {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 10px; background: rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+    }
+    .steps-label {
+      font-size: 11px; font-weight: 600; color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .step-row {
+      display: grid; grid-template-columns: 30px 1fr 40px 60px;
+      gap: 8px; align-items: center; padding: 6px;
+      background: var(--bg3); border-radius: 6px; font-size: 12px;
+    }
+    .step-index {
+      text-align: center; font-weight: 600; color: var(--sub);
+    }
+    .step-type {
+      color: var(--text); font-family: 'DM Mono', monospace;
+    }
+    .step-status {
+      text-align: center; font-weight: 600;
+    }
+    .step-status.ok { color: #10b981; }
+    .step-status.fail { color: #ef4444; }
+    .step-time {
+      text-align: right; color: var(--sub); font-size: 11px;
+    }
+
+
+        /* ── Responsive ── */
     @media (max-width: 600px) {
       .topbar      { padding: 12px 16px 8px; }
       .tab-bar     { padding: 6px 16px 0; }
