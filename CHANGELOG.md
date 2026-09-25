@@ -1,3 +1,28 @@
+## [3.6.0] - 2026-09-25
+
+### Added - Phase 7: Advanced Execution & Versioning
+- **Parallel Execution** – DAG-based chain execution with dependency resolution (no more sequential-only)
+- **Conditional Steps** – CONDITION_CHECK action type supporting Jinja2 expressions for branching logic
+- **Webhook Actions** – External integration callbacks for triggering third-party services
+- **Chain Versioning** – Save and rollback chain definitions to previous versions with full history
+- **Batch Operations** – Execute multiple chains simultaneously with batch start/commit pattern
+- **Enhanced Error Recovery** – Multi-strategy rollback on step failure with configurable fallback behavior
+- **WebSocket Commands** – 8 new commands for Phase 7: `ws_chain_get_version`, `ws_chain_list_versions`, `ws_chain_rollback_version`, `ws_batch_start`, `ws_batch_add_operation`, `ws_batch_commit`, `ws_chain_execute_parallel`, `ws_condition_test`
+- **Frontend Version Display** – Panel header shows integration version (v3.6.0)
+
+### Technical Details
+- HouseVoiceExecutionHistory class for persistent execution tracking via HA Storage API
+- ChainValidator integration for schema validation at creation/publish time
+- Support for both sync (@callback) and async (@async_response) WebSocket patterns
+- Comprehensive error handling with meaningful log messages
+- Full test coverage for all Phase 7 features (test_chain_commands.py + execution history tests)
+
+### Architecture
+- Runtime data access: entry.runtime_data.chains, entry.runtime_data.chain_validator, entry.runtime_data.execution_history
+- Fail-safe validation (explicit errors only, no hidden blockages)
+- 29 total WebSocket commands registered (12 core + 7 chain + 8 Phase 7 + 2 condition)
+
+
 ## [3.5.1] - 2026-09-24
 
 ### Fixed
