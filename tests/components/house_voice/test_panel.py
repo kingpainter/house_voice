@@ -63,12 +63,14 @@ async def test_static_path_registered_once_per_session(hass_with_panel_data, moc
 
     with patch("custom_components.house_voice.panel.panel_custom.async_register_panel", new=AsyncMock()), \
          patch.object(panel_module, "_HAS_STATIC_PATH_CONFIG", False), \
+        # When _HAS_STATIC_PATH_CONFIG is False, code calls register_static_path (sync) not async_register_static_paths
+        hass.http.register_static_path = MagicMock()
          patch("os.path.getmtime", return_value=1234567890.0):
 
         # First setup
         await async_register_panel(hass, mock_entry)
         assert hass.data.get(_SESSION_KEY_STATIC) is True
-        assert hass.http.async_register_static_paths.call_count == 1
+        assert hass.http.register_static_path.call_count == 1
 
         # Simulate reload: unload clears _panel_registered but NOT _SESSION_KEY_STATIC
         async_unregister_panel(hass, mock_entry)
@@ -78,7 +80,7 @@ async def test_static_path_registered_once_per_session(hass_with_panel_data, moc
         await async_register_panel(hass, mock_entry)
 
     # Static path must still only have been registered once
-    assert hass.http.async_register_static_paths.call_count == 1
+    assert hass.http.register_static_path.call_count == 1
     assert mock_entry.runtime_data.panel_registered is True
 
 

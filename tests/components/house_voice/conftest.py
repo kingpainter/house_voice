@@ -142,3 +142,24 @@ def sample_event():
         "volume":     0.35,
         "conditions": [],
     }
+
+
+# ============================================================================
+# WebSocket Decorator Mocks
+# ============================================================================
+# Mock the @websocket_api decorators so tests can call handlers directly
+
+def websocket_command(schema):
+    """Mock websocket_command decorator."""
+    def decorator(func):
+        return func
+    return decorator
+
+def async_response(func):
+    """Mock async_response decorator - just passes through."""
+    return func
+
+# Patch decorators before any websocket.py imports
+import homeassistant.components.websocket_api as websocket_api
+websocket_api.websocket_command = websocket_command
+websocket_api.async_response = async_response
