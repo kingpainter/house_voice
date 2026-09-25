@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.9.0";
+    this._version       = "3.10.0";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
@@ -871,9 +871,9 @@ class HouseVoicePanel extends HTMLElement {
             <span class="event-volume">🔊 ${Math.round((ev.volume || 0.35) * 100)}%</span>
           </div>
           <div class="event-actions">
-            <button class="btn btn-test"   data-id="${this._esc(id)}">▶ Test</button>
-            <button class="btn btn-edit"   data-id="${this._esc(id)}">✎ Rediger</button>
-            <button class="btn btn-delete" data-id="${this._esc(id)}">✕ Slet</button>
+            <button class="btn btn-test" title="Afspil event med testdata" data-id="${this._esc(id)}">▶ Test</button>
+            <button class="btn btn-edit" title="Rediger event detaljer" data-id="${this._esc(id)}">✎ Rediger</button>
+            <button class="btn btn-delete" title="Slet event permanent" data-id="${this._esc(id)}">✕ Slet</button>
           </div>
         </div>`;
     }).join("");
@@ -902,7 +902,7 @@ class HouseVoicePanel extends HTMLElement {
           </div>
           <div class="event-actions">
             <button class="btn btn-edit btn-edit-group"    data-id="${this._esc(id)}">✎ Rediger</button>
-            <button class="btn btn-delete btn-delete-group" data-id="${this._esc(id)}">✕ Slet</button>
+            <button class="btn btn-delete btn-delete-group" title="Slet gruppe permanent" data-id="${this._esc(id)}">✕ Slet</button>
           </div>
         </div>`;
     }).join("");
@@ -1082,7 +1082,7 @@ class HouseVoicePanel extends HTMLElement {
           <div class="filter-row">
             <div class="filter-group">
               <label>Kæde:</label>
-              <select id="history-filter-chain" class="filter-select">
+              <select id="history-filter-chain" class="filter-select" title="Filtrer efter chain">
                 <option value="">-- Alle kæder --</option>
                 ${Object.keys(this._chains).map(id => `
                   <option value="${id}" ${chainId === id ? 'selected' : ''}>
@@ -1094,7 +1094,7 @@ class HouseVoicePanel extends HTMLElement {
             
             <div class="filter-group">
               <label>Status:</label>
-              <select id="history-filter-status" class="filter-select">
+              <select id="history-filter-status" class="filter-select" title="Filtrer efter status">
                 <option value="">-- Alle --</option>
                 <option value="completed" ${status === 'completed' ? 'selected' : ''}>✓ Afsluttet</option>
                 <option value="failed" ${status === 'failed' ? 'selected' : ''}>✗ Fejl</option>
@@ -1105,7 +1105,7 @@ class HouseVoicePanel extends HTMLElement {
             
             <div class="filter-group">
               <label>Søg:</label>
-              <input type="text" id="history-filter-search" class="filter-input" 
+              <input type="text" id="history-filter-search" class="filter-input" title="Søg i historikken" 
                 placeholder="Søg i trinnavne..." value="${this._esc(searchText)}">
             </div>
             
@@ -1494,8 +1494,8 @@ class HouseVoicePanel extends HTMLElement {
             </div>
           </div>
           <div class="form-footer">
-            <button class="btn btn-cancel" id="cancel-form">Annuller</button>
-            <button class="btn btn-save" id="save-form" ${this._saving ? "disabled" : ""}>
+            <button class="btn btn-cancel" id="cancel-form" title="Annuller uden at gemme">Annuller</button>
+            <button class="btn btn-save" id="save-form" title="Gem ændringer" ${this._saving ? "disabled" : ""}>
               ${this._saving ? "Gemmer..." : "💾 Gem"}
             </button>
           </div>
@@ -1595,18 +1595,18 @@ class HouseVoicePanel extends HTMLElement {
             </div>
             <div class="topbar-actions">
               ${isEvents ? `
-                <button class="btn btn-import" id="btn-import">📥 Import</button>
-                <button class="btn btn-export" id="btn-export">📤 Export</button>
-                <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
-                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
-                <button class="btn btn-add" id="btn-add">＋ Tilføj event</button>
+                <button class="btn btn-import" id="btn-import" title="Importér events fra JSON fil">📥 Import</button>
+                <button class="btn btn-export" id="btn-export" title="Eksportér alle events som JSON">📤 Export</button>
+                <button class="btn btn-refresh" id="btn-refresh" title="Genindlæs data fra serveren">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload" title="Fuld genindlæsning af panel">⟳ Reload</button>
+                <button class="btn btn-add" id="btn-add" title="Opret et nyt event">＋ Tilføj event</button>
               ` : isGroups ? `
-                <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
-                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
-                <button class="btn btn-add" id="btn-add-group">＋ Tilføj gruppe</button>
+                <button class="btn btn-refresh" id="btn-refresh" title="Genindlæs data fra serveren">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload" title="Fuld genindlæsning af panel">⟳ Reload</button>
+                <button class="btn btn-add" id="btn-add-group" title="Opret en ny gruppe">＋ Tilføj gruppe</button>
               ` : `
-                <button class="btn btn-refresh" id="btn-refresh">↺ Opdater</button>
-                <button class="btn btn-reload" id="btn-reload">⟳ Reload</button>
+                <button class="btn btn-refresh" id="btn-refresh" title="Genindlæs data fra serveren">↺ Opdater</button>
+                <button class="btn btn-reload" id="btn-reload" title="Fuld genindlæsning af panel">⟳ Reload</button>
               `}
             </div>
           </div>
@@ -2282,8 +2282,285 @@ class HouseVoicePanel extends HTMLElement {
     .modal-actions {
       display: flex; gap: 8px; justify-content: flex-end;
     }
+    /* ── Phase 11: UI/UX Polish & Animations ── */
+    
+    /* Tab bar animations */
+    .tab-bar {
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .tab {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .tab::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      transform: scaleX(0);
+      transform-origin: center;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .tab:hover::before {
+      transform: scaleX(1);
+    }
+    
+    .tab.active {
+      background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(52,211,153,0.04));
+      border-radius: 8px 8px 0 0;
+    }
 
-        /* ── Responsive ── */
+    /* Tooltip styling */
+    [title] {
+      position: relative;
+    }
+    
+    [title]:hover::after {
+      content: attr(title);
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15,25,35,0.95);
+      color: var(--accent);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      z-index: 10000;
+      border: 1px solid rgba(20,184,166,0.2);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      animation: tooltipFade 0.2s ease-out;
+      pointer-events: none;
+      letter-spacing: 0.5px;
+    }
+    
+    [title]:hover::before {
+      content: '';
+      position: absolute;
+      bottom: 118%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: rgba(15,25,35,0.95);
+      z-index: 10000;
+      animation: tooltipFade 0.2s ease-out;
+    }
+
+    /* Card gradient backgrounds and hover effects */
+    .event-card, .execution-card, .chain-card {
+      background: linear-gradient(135deg, var(--bg2) 0%, rgba(20,184,166,0.02) 100%);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .event-card:hover, .execution-card:hover, .chain-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(20,184,166,0.12);
+      border-color: rgba(20,184,166,0.3);
+    }
+
+    /* Metric cards with gradient overlay */
+    .metric-card {
+      background: linear-gradient(135deg, rgba(20,184,166,0.05) 0%, rgba(52,211,153,0.03) 100%);
+      border: 1px solid rgba(20,184,166,0.15);
+      border-radius: 12px;
+      padding: 16px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, transparent 0%, rgba(20,184,166,0.08) 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    
+    .metric-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(20,184,166,0.15);
+      border-color: rgba(20,184,166,0.3);
+    }
+    
+    .metric-card:hover::before {
+      opacity: 1;
+    }
+
+    /* Striped table rows for better readability */
+    .history-row:nth-child(odd) {
+      background: var(--bg2);
+    }
+    
+    .history-row:nth-child(even) {
+      background: linear-gradient(90deg, rgba(20,184,166,0.03), transparent);
+    }
+    
+    .step-row:nth-child(odd) {
+      background: var(--bg3);
+    }
+    
+    .step-row:nth-child(even) {
+      background: linear-gradient(90deg, rgba(20,184,166,0.03), var(--bg3));
+    }
+
+    /* Enhanced button styling with gradients */
+    .btn-add, .btn-save {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      box-shadow: 0 4px 12px rgba(20,184,166,0.25);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .btn-add:hover, .btn-save:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(20,184,166,0.35);
+    }
+    
+    .btn-test {
+      background: linear-gradient(135deg, rgba(20,184,166,0.12), rgba(52,211,153,0.08));
+      transition: all 0.2s ease;
+    }
+    
+    .btn-test:hover {
+      box-shadow: 0 4px 12px rgba(20,184,166,0.2);
+    }
+    
+    .btn-delete {
+      background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05));
+    }
+    
+    .btn-delete:hover {
+      box-shadow: 0 4px 12px rgba(239,68,68,0.15);
+    }
+    
+    .btn-export {
+      background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(20,184,166,0.04));
+    }
+    
+    .btn-export:hover {
+      box-shadow: 0 4px 12px rgba(20,184,166,0.15);
+    }
+
+    /* Filter section styling with animations */
+    .filter-section {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      background: linear-gradient(135deg, rgba(20,184,166,0.04), transparent);
+      border-radius: 10px;
+      border: 1px solid rgba(20,184,166,0.1);
+      animation: slideDown 0.3s ease-out;
+      transition: all 0.3s ease;
+    }
+    
+    .filter-section:hover {
+      border-color: rgba(20,184,166,0.2);
+      box-shadow: 0 2px 8px rgba(20,184,166,0.08);
+    }
+    
+    .filter-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.2s ease;
+    }
+    
+    .filter-control:hover {
+      opacity: 0.8;
+    }
+
+    /* Status badges with gradients */
+    .status-active {
+      background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1));
+      border: 1px solid rgba(16,185,129,0.3);
+    }
+    
+    .status-draft {
+      background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.1));
+      border: 1px solid rgba(139,92,246,0.3);
+    }
+    
+    .status-published {
+      background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.1));
+      border: 1px solid rgba(59,130,246,0.3);
+    }
+    
+    .pill-accent {
+      background: linear-gradient(135deg, rgba(20,184,166,0.12), rgba(52,211,153,0.08));
+      border: 1px solid rgba(20,184,166,0.25);
+      transition: all 0.2s ease;
+    }
+    
+    .pill-accent:hover {
+      box-shadow: 0 2px 8px rgba(20,184,166,0.15);
+      transform: translateY(-1px);
+    }
+
+    /* Smooth transitions for all interactive elements */
+    .search-input {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .search-input:focus {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(20,184,166,0.2);
+    }
+
+    /* Animation keyframes */
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes tooltipFade {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+    
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+
+/* ── Responsive ── */
     @media (max-width: 600px) {
       .topbar      { padding: 12px 16px 8px; }
       .tab-bar     { padding: 6px 16px 0; }
@@ -2506,7 +2783,7 @@ if (!customElements.get("house-voice-panel")) {
               </option>`
             ).join('')}
           </select>
-          <button class="btn btn-apply" id="analytics-apply">Anvend filter</button>
+          <button class="btn btn-apply" id="analytics-apply" title="Anvend valgte filtre">Anvend filter</button>
           <button class="btn btn-export-csv" id="analytics-export">📥 Eksportér CSV</button>
         </div>
 
