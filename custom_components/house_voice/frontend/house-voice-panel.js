@@ -1,5 +1,5 @@
 // File: house-voice-panel.js
-// Version: 3.10.1
+// Version: 3.10.2
 // Description: House Voice Manager sidebar panel.
 //              Tabs: Events | Groups | History
 //              Design: Indeklima Designer – teal #14b8a6 / emerald #34d399
@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.10.1";
+    this._version       = "3.10.2";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
@@ -83,7 +83,7 @@ class HouseVoicePanel extends HTMLElement {
         this._loadConditions(),
         this._loadPlayers(),
         this._loadHistory(),
-        this._loadAnalytics(),
+        // this._loadAnalytics(), // Phase 9: Advanced Analytics
       ]);
     } finally {
       this._loading = false;
@@ -1615,7 +1615,7 @@ class HouseVoicePanel extends HTMLElement {
             <button class="tab ${isGroups  ? 'active' : ''}" data-tab="groups">🔈 Grupper</button>
             <button class="tab ${isChains  ? 'active' : ''}" data-tab="chains">⛓️ Kæder</button>
             <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
-            <button class="tab ${isAnalytics ? 'active' : ''}" data-tab="analytics">📊 Analyse</button>
+            // <button class="tab ${isAnalytics ? 'active' : ''}" data-tab="analytics">📊 Analyse</button>
           </div>
         </div>
 
