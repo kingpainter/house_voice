@@ -1392,7 +1392,7 @@ class HouseVoicePanel extends HTMLElement {
       box-shadow: 0 4px 12px var(--accent-glow);
     }
     .logo-img {
-      width: 70%; height: 70%; object-fit: contain; object-position: center;
+      width: 85%; height: 85%; object-fit: contain; object-position: center;
     }
     .header-text { display: flex; flex-direction: column; gap: 1px; }
     .header-name { font-size: 18px; font-weight: 700; color: var(--text); }
