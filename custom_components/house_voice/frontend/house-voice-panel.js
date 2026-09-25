@@ -617,14 +617,14 @@ class HouseVoicePanel extends HTMLElement {
 
   async _loadExecutionHistory() {
     try {
-      // Load execution history with filters
+      // Load execution history with filters (only include non-empty values for voluptuous schema)
       const result = await this._hass.callWS({
         type: "house_voice/query_executions",
-        chain_id: this._historyFilters.chainId,
-        status: this._historyFilters.status,
-        start_date: this._historyFilters.startDate,
-        end_date: this._historyFilters.endDate,
-        search_text: this._historyFilters.searchText,
+        ...(this._historyFilters.chainId && { chain_id: this._historyFilters.chainId }),
+        ...(this._historyFilters.status && { status: this._historyFilters.status }),
+        ...(this._historyFilters.startDate && { start_date: this._historyFilters.startDate }),
+        ...(this._historyFilters.endDate && { end_date: this._historyFilters.endDate }),
+        ...(this._historyFilters.searchText && { search_text: this._historyFilters.searchText }),
         limit: 100,
       });
       this._execHistory = result.executions || [];
@@ -3289,22 +3289,27 @@ class HouseVoicePanel extends HTMLElement {
   async _loadAnalytics() {
     try {
       this._loading = true;
+      
+      // Helper to build request with only non-empty values (voluptuous schema requirement)
+      const defaultStart = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+      const defaultEnd = new Date().toISOString().split('T')[0];
+      
       const [stats, perf, steps, timeline] = await Promise.all([
         this._hass.callWS({
           type: "house_voice/get_analytics_statistics",
-          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
-          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0],
-          chain_id: this._analyticsFilters.chainId || null
+          start_date: this._analyticsFilters.startDate || defaultStart,
+          end_date: this._analyticsFilters.endDate || defaultEnd,
+          ...(this._analyticsFilters.chainId && { chain_id: this._analyticsFilters.chainId })
         }),
         this._hass.callWS({
           type: "house_voice/get_chain_performance",
-          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
-          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
+          start_date: this._analyticsFilters.startDate || defaultStart,
+          end_date: this._analyticsFilters.endDate || defaultEnd
         }),
         this._hass.callWS({
           type: "house_voice/get_step_analytics",
-          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
-          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
+          start_date: this._analyticsFilters.startDate || defaultStart,
+          end_date: this._analyticsFilters.endDate || defaultEnd
         }),
         this._hass.callWS({
           type: "house_voice/get_execution_timeline",
