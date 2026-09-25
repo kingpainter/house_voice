@@ -1,5 +1,5 @@
 // File: house-voice-panel.js
-// Version: 3.7.0
+// Version: 3.7.1
 // Description: House Voice Manager sidebar panel.
 //              Tabs: Events | Groups | History
 //              Design: Indeklima Designer – teal #14b8a6 / emerald #34d399
@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.7.0";
+    this._version       = "3.7.1";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};

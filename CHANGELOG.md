@@ -1,3 +1,33 @@
+## [3.7.1] - 2026-09-25
+
+### Fixed - Critical Bugfixes & Phase 8 Stability
+- **JavaScript Syntax Errors (Frontend)**
+  - Fixed incomplete `_switchChain()` method declaration causing "Unexpected identifier" error
+  - Fixed premature class closing brace, moving orphaned methods back into HouseVoicePanel class
+  - Fixed `_loadExecutionHistory()`, `_showTemplateSelector()`, and `_createChainFromTemplate()` not accessible from class scope
+  
+- **WebSocket Schema Validation (Backend)**
+  - Added proper `vol.Optional()` schema definitions for `query_executions` command (chain_id, status, start_date, end_date, search_text, limit)
+  - Added `vol.Required()` for `exec_id` in `get_execution_detail` command
+  - Resolves "invalid_format" error from HA's schema validator when sending filter parameters
+  
+- **Repository Cleanup**
+  - Removed 14 outdated files (~116 KB): 3x "ONLY FOR REFERANCE" reference copies, old SPRINT documentation, obsolete STATUS.md, chat_gpt.md
+  - Promoted STATUS_2026-09-24.md to active STATUS.md for ongoing project tracking
+  - Marked ANNOUNCEMENT_CHAIN_API.md for verification post-Phase 8 (v3.4.0 → v3.7.1)
+
+### Technical Details
+- All Phase 8 features (Execution History Viewer & Analytics) now fully functional
+- WebSocket commands properly validate optional filter parameters
+- Panel loads without syntax errors and execution history queries work correctly
+- Cleaner repository with removed bloatware and archived sprint notes
+
+### Testing
+- Panel loads successfully in HA sidebar (no syntax errors)
+- Execution history filtering, searching, and JSON export functional
+- WebSocket queries accept filter parameters without validation rejection
+
+
 ## [3.7.0] - 2026-09-25
 
 ### Added - Phase 8: Execution History Viewer & Analytics
