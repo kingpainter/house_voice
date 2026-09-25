@@ -1155,7 +1155,15 @@ def ws_get_chain_templates(
 
 # ── Query Execution History ────────────────────────────────────────────────────
 
-@websocket_api.websocket_command({"type": f"{DOMAIN}/query_executions"})
+@websocket_api.websocket_command({
+    "type":                            f"{DOMAIN}/query_executions",
+    vol.Optional("chain_id"):          str,
+    vol.Optional("status"):            str,
+    vol.Optional("start_date"):        str,
+    vol.Optional("end_date"):          str,
+    vol.Optional("search_text"):       str,
+    vol.Optional("limit", default=50): int,
+})
 @callback
 def ws_query_executions(
     hass: HomeAssistant,
@@ -1204,7 +1212,10 @@ def ws_query_executions(
         connection.send_error(msg["id"], "unknown_error", str(err))
 
 
-@websocket_api.websocket_command({"type": f"{DOMAIN}/get_execution_detail"})
+@websocket_api.websocket_command({
+    "type":                    f"{DOMAIN}/get_execution_detail",
+    vol.Required("exec_id"):   str,
+})
 @callback
 def ws_get_execution_detail(
     hass: HomeAssistant,
