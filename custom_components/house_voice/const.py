@@ -1,9 +1,9 @@
-# VERSION = "3.5.1"
+# VERSION = "3.5.2"
 # File: const.py
 # Description: Constants for House Voice Manager
 
 DOMAIN   = "house_voice"
-VERSION  = "3.5.0"
+VERSION  = "3.5.2"
 
 # Storage
 STORAGE_KEY             = "house_voice_events"
