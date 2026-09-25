@@ -778,6 +778,8 @@ def _transform_execution_for_panel(execution: dict) -> dict:
         return execution  # Return as-is if transformation fails
 
 
+@websocket_api.websocket_command({"type": f"{DOMAIN}/list_execution_history"})
+@callback
 def ws_list_execution_history(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
