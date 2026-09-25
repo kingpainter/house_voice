@@ -201,6 +201,42 @@ class HouseVoiceChains:
         self.data[chain_id]["modified"] = now
         await self.async_save()
         return True
+    
+    async def async_save_version(self, chain_id: str, version: int, data: dict) -> None:
+        """Save a specific version of a chain for versioning support."""
+        version_key = f"versions_{chain_id}"
+        
+        if version_key not in self.data:
+            self.data[version_key] = {}
+        
+        # Store version data with version number as key
+        self.data[version_key][str(version)] = {"data": data}
+        await self.async_save()
+    
+    def list_versions(self, chain_id: str) -> list[dict]:
+        """Return list of versions for a given chain, sorted by version number."""
+        version_key = f"versions_{chain_id}"
+        
+        if version_key not in self.data:
+            return []
+        
+        versions_dict = self.data[version_key]
+        versions = []
+        
+        for version_str, version_data in versions_dict.items():
+            try:
+                version_num = int(version_str)
+                entry = {"version": version_num}
+                entry.update(version_data.get("data", {}))
+                versions.append(entry)
+            except (ValueError, TypeError):
+                # Skip invalid version keys
+                continue
+        
+        # Sort by version number ascending
+        versions.sort(key=lambda x: x["version"])
+        return versions
+
 
 
 # Sprint 6: Persistent Execution History
