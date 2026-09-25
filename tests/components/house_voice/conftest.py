@@ -6,8 +6,30 @@ any test using both mock_hass and mock_entry gets automatic entry resolution
 for websocket.py / system_health.py / panel.py, which only receive `hass`.
 """
 
-from types import SimpleNamespace
+# ============================================================================
+# CRITICAL: Patch WebSocket decorators BEFORE any house_voice imports
+# ============================================================================
+# This MUST happen first, before house_voice.websocket is imported.
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Define decorator mocks
+def websocket_command(schema):
+    """Mock websocket_command decorator."""
+    def decorator(func):
+        return func
+    return decorator
+
+def async_response(func):
+    """Mock async_response decorator - just passes through."""
+    return func
+
+# Apply patches immediately
+import homeassistant.components.websocket_api as websocket_api
+websocket_api.websocket_command = websocket_command
+websocket_api.async_response = async_response
+
+# Now safe to import house_voice components
+from types import SimpleNamespace
 import pytest
 
 from homeassistant.core import HomeAssistant
@@ -27,6 +49,8 @@ def mock_hass():
     hass.states = MagicMock()
     hass.states.async_all = MagicMock(return_value=[])
     hass.states.get = MagicMock(return_value=None)
+    hass.bus = MagicMock()
+    hass.bus.async_fire = MagicMock()
     # No config entries registered by default; mock_entry wires this up when used.
     hass.config_entries = MagicMock()
     hass.config_entries.async_entries = MagicMock(return_value=[])
@@ -142,24 +166,3 @@ def sample_event():
         "volume":     0.35,
         "conditions": [],
     }
-
-
-# ============================================================================
-# WebSocket Decorator Mocks
-# ============================================================================
-# Mock the @websocket_api decorators so tests can call handlers directly
-
-def websocket_command(schema):
-    """Mock websocket_command decorator."""
-    def decorator(func):
-        return func
-    return decorator
-
-def async_response(func):
-    """Mock async_response decorator - just passes through."""
-    return func
-
-# Patch decorators before any websocket.py imports
-import homeassistant.components.websocket_api as websocket_api
-websocket_api.websocket_command = websocket_command
-websocket_api.async_response = async_response

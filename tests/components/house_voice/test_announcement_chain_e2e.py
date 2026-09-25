@@ -323,15 +323,17 @@ async def test_e2e_announcement_with_actual_event_engine_integration(mock_hass, 
     # Mock storage.get_event to return the test event
     mock_engine.storage.get_event = MagicMock(return_value=test_event)
     
-    # Mock ultra_tts to avoid actual TTS calls
-    mock_engine.ultra_tts.async_speak = AsyncMock()
+    # Mock UltraTTS class - patch at module level before VoiceEngine calls it
+    mock_ultra_tts_instance = MagicMock()
+    mock_ultra_tts_instance.async_speak = AsyncMock()
     
-    # Execute announcement via engine
-    try:
-        await mock_engine.say("test_announcement")
-    except Exception as e:
-        # Log but continue - we're testing that the event was processed
-        pass
+    with patch("custom_components.house_voice.voice_engine.UltraTTS", return_value=mock_ultra_tts_instance):
+        # Execute announcement via engine
+        try:
+            await mock_engine.say("test_announcement")
+        except Exception as e:
+            # Log but continue - we're testing that the event was processed
+            pass
     
     # Verify storage.get_event was called to fetch the event
     mock_engine.storage.get_event.assert_called_with("test_announcement")
