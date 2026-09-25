@@ -1,5 +1,5 @@
 // File: house-voice-panel.js
-// Version: 3.6.0
+// Version: 3.7.0
 // Description: House Voice Manager sidebar panel.
 //              Tabs: Events | Groups | History
 //              Design: Indeklima Designer – teal #14b8a6 / emerald #34d399
@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.6.0";
+    this._version       = "3.7.0";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
@@ -32,8 +32,17 @@ class HouseVoicePanel extends HTMLElement {
     this._errors        = {};      // { fieldName: 'error message' }
     this._dialog        = null;    // { type: 'export'|'import'|'name', data: {...} }
     this._chains        = {};      // { chainId: { name, status, steps, ... } }
+    this._templates     = {};      // { templateId: { name, description, steps } }
     this._currentChain  = null;    // currently active chain
     this._execHistory   = [];      // [ { chainId, timestamp, steps, success, duration } ]
+    this._historyFilters = {
+      chainId: null,
+      status: null,
+      startDate: null,
+      endDate: null,
+      searchText: ""
+    };
+    this._selectedExecDetail = null;  // for expanded view
   }
 
   set hass(h) {
@@ -56,6 +65,9 @@ class HouseVoicePanel extends HTMLElement {
     this._loading = true; this._updateUI();
     try {
       await Promise.all([
+        this._loadTemplates(),
+        this._loadChains(),
+        this._loadExecutionHistory(),
         this._loadEvents(),
         this._loadGroups(),
         this._loadConditions(),
@@ -582,19 +594,46 @@ class HouseVoicePanel extends HTMLElement {
     }
   }
 
+
+
+  _switchChain(chainId) {
   async _loadExecutionHistory() {
     try {
-      this._execHistory = await this._hass.callWS({
-        type: "house_voice/list_execution_history",
-        limit: 50,
-      }) || [];
+      // Load execution history with filters
+      const result = await this._hass.callWS({
+        type: "house_voice/query_executions",
+        chain_id: this._historyFilters.chainId,
+        status: this._historyFilters.status,
+        start_date: this._historyFilters.startDate,
+        end_date: this._historyFilters.endDate,
+        search_text: this._historyFilters.searchText,
+        limit: 100,
+      });
+      this._execHistory = result.executions || [];
     } catch (e) {
       console.error("[House Voice] Error loading execution history:", e);
       this._execHistory = [];
     }
   }
 
-  _switchChain(chainId) {
+  async _getExecutionDetail(execId) {
+    try {
+      const result = await this._hass.callWS({
+        type: "house_voice/get_execution_detail",
+        exec_id: execId,
+      });
+      return result.execution;
+    } catch (e) {
+      console.error("[House Voice] Error loading execution detail:", e);
+      return null;
+    }
+  }
+
+  async _applyHistoryFilters() {
+    await this._loadExecutionHistory();
+    this._selectedExecDetail = null;  // Clear detail view
+    this._render();
+  }
     if (this._chains[chainId]) {
       this._currentChain = chainId;
       this._render();
@@ -700,85 +739,145 @@ class HouseVoicePanel extends HTMLElement {
 
 
     _historyHTML() {
-    // Show chain execution history if available, otherwise show event history
-    if (this._execHistory && this._execHistory.length > 0) {
-      return `
-        <div class="execution-history">
-          <div class="exec-history-header">
-            <h3>Chain Execution History</h3>
-            <small>${this._execHistory.length} executions</small>
-          </div>
-          ${this._execHistory.map(exec => {
-            const statusBadgeClass = exec.success ? 'success' : 'error';
-            const statusLabel = exec.success ? '✓ Success' : '✗ Failed';
-            const duration = exec.duration ? `${Math.round(exec.duration)}ms` : '–';
-            const chainName = exec.chainId && this._chains[exec.chainId] 
-              ? this._chains[exec.chainId].name 
-              : exec.chainId;
-            
-            return `
-              <div class="execution-card">
-                <div class="exec-header">
-                  <div class="exec-info">
-                    <h4>${this._esc(chainName || 'Unknown Chain')}</h4>
-                    <small>${this._formatTimestamp(exec.timestamp)}</small>
-                  </div>
-                  <div class="exec-status-badge ${statusBadgeClass}">
-                    ${statusLabel}
-                  </div>
-                  <div class="exec-duration">
-                    <small>${duration}</small>
-                  </div>
-                </div>
-                
-                ${exec.steps && exec.steps.length > 0 ? `
-                  <div class="steps-detail">
-                    <small class="steps-label">Steps (${exec.steps.length}):</small>
-                    ${exec.steps.map((step, idx) => {
-                      const stepStatus = step.success ? '✓' : '✗';
-                      const stepTime = step.duration ? `${Math.round(step.duration)}ms` : '–';
-                      return `
-                        <div class="step-row">
-                          <span class="step-index">${idx + 1}</span>
-                          <span class="step-type">${this._esc(step.type || 'action')}</span>
-                          <span class="step-status ${step.success ? 'ok' : 'fail'}">${stepStatus}</span>
-                          <span class="step-time">${stepTime}</span>
-                        </div>
-                      `;
-                    }).join("")}
-                  </div>
-                ` : ""}
-              </div>
-            `;
-          }).join("")}
-        </div>
-      `;
-    }
-
-    // Fallback to event history
-    if (!this._history.length)
-      return `<div class="empty">Ingen historik endnu.<br>Afspil et event for at se det her.</div>`;
-
+    const { chainId, status, searchText } = this._historyFilters;
+    
     return `
-      <div class="history-list">
-        ${this._history.map(h => {
-          const s    = this._statusLabel(h.status);
-          const date = h.timestamp ? new Date(h.timestamp) : null;
-          const time = (date && !isNaN(date.getTime()))
-            ? date.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-            : "–";
-          return `
-            <div class="history-row">
-              <span class="history-time">${time}</span>
-              <span class="history-id">${this._esc(h.event_id)}</span>
-              <span class="history-msg">${this._esc(h.message)}</span>
-              <span class="history-status" style="color:${s.color}">${s.label}</span>
-            </div>`;
-        }).join("")}
-      </div>`;
+      <div class="history-container">
+        <!-- Filter Panel -->
+        <div class="history-filters">
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Kæde:</label>
+              <select id="history-filter-chain" class="filter-select">
+                <option value="">-- Alle kæder --</option>
+                ${Object.keys(this._chains).map(id => `
+                  <option value="${id}" ${chainId === id ? 'selected' : ''}>
+                    ${this._esc(this._chains[id].name)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+            
+            <div class="filter-group">
+              <label>Status:</label>
+              <select id="history-filter-status" class="filter-select">
+                <option value="">-- Alle --</option>
+                <option value="completed" ${status === 'completed' ? 'selected' : ''}>✓ Afsluttet</option>
+                <option value="failed" ${status === 'failed' ? 'selected' : ''}>✗ Fejl</option>
+                <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>⟳ I gang</option>
+                <option value="blocked_condition" ${status === 'blocked_condition' ? 'selected' : ''}>⊘ Blokeret</option>
+              </select>
+            </div>
+            
+            <div class="filter-group">
+              <label>Søg:</label>
+              <input type="text" id="history-filter-search" class="filter-input" 
+                placeholder="Søg i trinnavne..." value="${this._esc(searchText)}">
+            </div>
+            
+            <button id="history-apply-filters" class="btn btn-small">Anvend</button>
+            <button id="history-reset-filters" class="btn btn-small">Nulstil</button>
+          </div>
+        </div>
+
+        <!-- Execution History Table -->
+        <div class="history-table-wrapper">
+          ${this._execHistory.length > 0 ? `
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Tid</th>
+                  <th>Kæde</th>
+                  <th>Status</th>
+                  <th>Trin</th>
+                  <th>Varighed</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${this._execHistory.map(exec => {
+                  const isSelected = this._selectedExecDetail === exec.id;
+                  const statusIcon = this._getStatusIcon(exec.status);
+                  const chainName = exec.chain_id && this._chains[exec.chain_id] 
+                    ? this._chains[exec.chain_id].name 
+                    : exec.chain_id || 'Ukendt';
+                  const duration = exec.duration_seconds 
+                    ? Math.round(exec.duration_seconds * 1000) + 'ms'
+                    : '–';
+                  const stepCount = exec.steps ? exec.steps.length : 0;
+                  
+                  return `
+                    <tr class="history-row ${isSelected ? 'selected' : ''}" data-exec-id="${exec.id}">
+                      <td class="col-time">${this._formatTimestamp(exec.started)}</td>
+                      <td class="col-chain">${this._esc(chainName)}</td>
+                      <td class="col-status"><span class="status-badge ${exec.status}">${statusIcon} ${exec.status}</span></td>
+                      <td class="col-steps">${stepCount} trin</td>
+                      <td class="col-duration">${duration}</td>
+                      <td class="col-expand">
+                        <button class="btn-expand" data-exec-id="${exec.id}" title="Vis detaljer">▼</button>
+                      </td>
+                    </tr>
+                    ${isSelected && exec.steps ? `
+                      <tr class="detail-row">
+                        <td colspan="6">
+                          <div class="execution-detail">
+                            <div class="detail-header">
+                              <h4>Udførelsesdetaljer</h4>
+                              <button class="btn btn-small" id="btn-export-exec-${exec.id}">📥 Eksporter JSON</button>
+                            </div>
+                            <div class="steps-table">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>#</th>
+                                    <th>Trin-ID</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Varighed</th>
+                                    <th>Besked</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  ${exec.steps.map((step, idx) => `
+                                    <tr class="step-detail-row">
+                                      <td>${idx + 1}</td>
+                                      <td class="step-id">${this._esc(step.id || '–')}</td>
+                                      <td>${this._esc(step.type || 'action')}</td>
+                                      <td><span class="step-status ${step.status || 'unknown'}">${step.status || '?'}</span></td>
+                                      <td>${step.duration_ms ? Math.round(step.duration_ms) + 'ms' : '–'}</td>
+                                      <td class="step-message">${this._esc(step.message || step.error || '–')}</td>
+                                    </tr>
+                                  `).join('')}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ` : ''}
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <div class="empty-state">
+              <p>Ingen udførelseshistorik fundet</p>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
   }
 
-  // ── Speaker checkboxes (events form) ──────────────────────────────────────
+  _getStatusIcon(status) {
+    const icons = {
+      'completed': '✓',
+      'failed': '✗',
+      'in_progress': '⟳',
+      'blocked_condition': '⊘'
+    };
+    return icons[status] || '?';
+  }
 
   _speakerCheckboxesHTML(selected) {
     const groupItems = Object.entries(this._groups).map(([gid, g]) => {
@@ -1267,10 +1366,66 @@ class HouseVoicePanel extends HTMLElement {
 
     // New chain button
     root.getElementById("btn-new-chain")?.addEventListener("click", () => {
-      // TODO: Open chain creation dialog
-      console.log("Create new chain");
+      // Show template selector to create new chain
+      this._showTemplateSelector();
     });
 
+
+    // History filter listeners
+    root.getElementById("history-filter-chain")?.addEventListener("change", (e) => {
+      this._historyFilters.chainId = e.target.value || null;
+    });
+    root.getElementById("history-filter-status")?.addEventListener("change", (e) => {
+      this._historyFilters.status = e.target.value || null;
+    });
+    root.getElementById("history-filter-search")?.addEventListener("input", (e) => {
+      this._historyFilters.searchText = e.target.value;
+    });
+    root.getElementById("history-apply-filters")?.addEventListener("click", () => {
+      this._applyHistoryFilters();
+    });
+    root.getElementById("history-reset-filters")?.addEventListener("click", () => {
+      this._historyFilters = { chainId: null, status: null, startDate: null, endDate: null, searchText: "" };
+      this._selectedExecDetail = null;
+      this._applyHistoryFilters();
+    });
+    
+    // Execution detail row expand/collapse
+    root.querySelectorAll(".btn-expand").forEach(el => {
+      el.addEventListener("click", async (e) => {
+        const execId = e.target.dataset.execId;
+        if (this._selectedExecDetail === execId) {
+          this._selectedExecDetail = null;
+        } else {
+          const detail = await this._getExecutionDetail(execId);
+          if (detail) {
+            this._selectedExecDetail = execId;
+            // Update execution record with full details
+            const idx = this._execHistory.findIndex(e => e.id === execId);
+            if (idx >= 0) this._execHistory[idx] = detail;
+          }
+        }
+        this._render();
+      });
+    });
+    
+    // Export execution as JSON
+    root.querySelectorAll("[id^='btn-export-exec-']").forEach(el => {
+      el.addEventListener("click", (e) => {
+        const execId = e.target.id.replace('btn-export-exec-', '');
+        const exec = this._execHistory.find(e => e.id === execId);
+        if (exec) {
+          const json = JSON.stringify(exec, null, 2);
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `execution-${execId}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      });
+    });
     root.querySelectorAll(".btn-test").forEach(el =>
       el.addEventListener("click", () => this._test(el.dataset.id)));
     root.querySelectorAll(".btn-edit:not(.btn-edit-group)").forEach(el =>
@@ -1761,6 +1916,36 @@ class HouseVoicePanel extends HTMLElement {
     }
 
 
+    /* ── Template Selector Modal ── */
+    .modal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6); display: flex; align-items: center;
+      justify-content: center; z-index: 1000;
+    }
+    .template-selector-modal {
+      background: var(--bg2); border-radius: var(--card-radius);
+      border: 1px solid var(--div); padding: 24px;
+      max-width: 500px; width: 90%; max-height: 80vh;
+      overflow-y: auto;
+    }
+    .template-selector-modal h3 { margin-bottom: 16px; color: var(--text); }
+    .template-list {
+      display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 16px;
+    }
+    .template-card {
+      background: var(--bg3); border: 1px solid var(--div); border-radius: 10px;
+      padding: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .template-card:hover {
+      border-color: var(--accent); background: rgba(20,184,166,0.08);
+    }
+    .template-card h4 { color: var(--text); margin-bottom: 4px; font-size: 14px; }
+    .template-card p { color: var(--sub); font-size: 12px; margin-bottom: 8px; }
+    .template-card small { color: var(--accent); font-weight: 500; }
+    .modal-actions {
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+
         /* ── Responsive ── */
     @media (max-width: 600px) {
       .topbar      { padding: 12px 16px 8px; }
@@ -1779,3 +1964,94 @@ class HouseVoicePanel extends HTMLElement {
 if (!customElements.get("house-voice-panel")) {
   customElements.define("house-voice-panel", HouseVoicePanel);
 }
+
+  async _loadTemplates() {
+    try {
+      const result = await this._hass.callWS({
+        type: "house_voice/get_chain_templates",
+      });
+      this._templates = result.templates || {};
+    } catch (e) {
+      console.error("[House Voice] Error loading chain templates:", e);
+      this._templates = {};
+    }
+  }
+
+  _showTemplateSelector() {
+    const templateIds = Object.keys(this._templates || {});
+    if (!templateIds.length) {
+      alert("Ingen templates tilgængelige");
+      return;
+    }
+
+    const html = `
+      <div class="template-selector-modal">
+        <h3>Vælg Chain Template</h3>
+        <div class="template-list">
+          ${templateIds.map(id => {
+            const tmpl = this._templates[id];
+            return `
+              <div class="template-card" data-template-id="${this._esc(id)}">
+                <h4>${this._esc(tmpl.name)}</h4>
+                <p>${this._esc(tmpl.description)}</p>
+                <small>${tmpl.step_count} steps</small>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="btn-cancel-template">Annuller</button>
+        </div>
+      </div>
+    `;
+
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.innerHTML = html;
+    this.shadowRoot.appendChild(modal);
+
+    // Event listeners
+    document.querySelectorAll(".template-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const templateId = card.dataset.templateId;
+        this._createChainFromTemplate(templateId);
+        modal.remove();
+      });
+    });
+
+    document.getElementById("btn-cancel-template").addEventListener("click", () => {
+      modal.remove();
+    });
+  }
+
+  async _createChainFromTemplate(templateId) {
+    const template = this._templates[templateId];
+    if (!template) return;
+
+    const chainName = prompt(`Navn på nyt chain fra "${template.name}":`, template.name);
+    if (!chainName) return;
+
+    try {
+      const chainId = `chain_${Date.now()}`;
+      const chainData = {
+        id: chainId,
+        name: chainName,
+        status: "draft",
+        steps: JSON.parse(JSON.stringify(template.steps)), // Deep copy
+        created: new Date().toISOString(),
+        modified: new Date().toISOString(),
+      };
+
+      await this._hass.callWS({
+        type: "house_voice/chain/create",
+        ...chainData,
+      });
+
+      this._showNotification(`✓ Chain '${chainName}' oprettet fra template`, "success");
+      await this._loadChains();
+      this._render();
+    } catch (e) {
+      console.error("[House Voice] Error creating chain from template:", e);
+      this._showNotification("✗ Fejl ved oprettelse af chain", "error");
+    }
+  }

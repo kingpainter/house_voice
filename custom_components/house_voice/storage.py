@@ -397,3 +397,110 @@ class HouseVoiceExecutionHistory:
         await self.async_update_chain(chain_id, version_data.get("data", {}))
         return True
 
+    
+    def list_executions_filtered(
+        self,
+        chain_id: str | None = None,
+        status: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        search_text: str | None = None
+    ) -> list[dict]:
+        """Return filtered list of executions with optional full-text search.
+        
+        Args:
+            chain_id: Filter by specific chain ID
+            status: Filter by execution status
+            start_date: Filter by start date (ISO format)
+            end_date: Filter by end date (ISO format)
+            limit: Maximum number of results to return
+            search_text: Search in step names and error messages
+        
+        Returns:
+            List of execution records matching filters, newest first.
+        """
+        results = list(self.data.values())
+        
+        # Filter by chain_id
+        if chain_id:
+            results = [e for e in results if e.get("chain_id") == chain_id]
+        
+        # Filter by status
+        if status:
+            results = [e for e in results if e.get("status") == status]
+        
+        # Filter by date range
+        if start_date:
+            results = [e for e in results if e.get("started", "") >= start_date]
+        if end_date:
+            results = [e for e in results if e.get("started", "") <= end_date]
+        
+        # Full-text search in steps
+        if search_text:
+            search_lower = search_text.lower()
+            filtered = []
+            for e in results:
+                # Search in step IDs and error messages
+                found = False
+                for step in e.get("steps", []):
+                    if (search_lower in step.get("id", "").lower() or
+                        search_lower in step.get("error", "").lower()):
+                        found = True
+                        break
+                if found or search_lower in e.get("error", "").lower():
+                    filtered.append(e)
+            results = filtered
+        
+        # Sort by started time (newest first)
+        results.sort(key=lambda e: e.get("started", ""), reverse=True)
+        
+        # Limit results
+        return results[:limit]
+    
+    def get_execution_detail(self, exec_id: str) -> dict | None:
+        """Return full execution record with all step details and timing info."""
+        execution = self.data.get(exec_id)
+        if not execution:
+            return None
+        
+        # Calculate total duration if finished
+        if execution.get("finished") and execution.get("started"):
+            from datetime import datetime
+            try:
+                started = datetime.fromisoformat(execution["started"])
+                finished = datetime.fromisoformat(execution["finished"])
+                duration = (finished - started).total_seconds()
+                execution["duration_seconds"] = duration
+            except (ValueError, TypeError):
+                execution["duration_seconds"] = None
+        
+        return execution
+    
+    def list_execution_summary(self, chain_id: str | None = None, limit: int = 50) -> list[dict]:
+        """Return minimal execution summary (for table display).
+        
+        Each record contains: id, chain_id, status, started, step_count.
+        """
+        executions = list(self.data.values())
+        
+        if chain_id:
+            executions = [e for e in executions if e.get("chain_id") == chain_id]
+        
+        # Sort by started time (newest first)
+        executions.sort(key=lambda e: e.get("started", ""), reverse=True)
+        
+        # Return summary fields only
+        summary = []
+        for e in executions[:limit]:
+            summary.append({
+                "id": e.get("id"),
+                "chain_id": e.get("chain_id"),
+                "status": e.get("status"),
+                "started": e.get("started"),
+                "finished": e.get("finished"),
+                "step_count": len(e.get("steps", [])),
+                "error": e.get("error"),
+            })
+        
+        return summary

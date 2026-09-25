@@ -1,3 +1,46 @@
+## [3.7.0] - 2026-09-25
+
+### Added - Phase 8: Execution History Viewer & Analytics
+- **Execution History Viewer** – Advanced filtering & search for chain executions with:
+  - Filter by chain ID, status (completed/failed/in_progress/blocked_condition)
+  - Date range filtering (from/to dates in ISO format)
+  - Full-text search in step names and error messages
+  - Table display with timestamp, chain name, status badge, step count, duration
+- **Expandable Execution Detail Rows** – Click to expand any execution and see:
+  - Complete step-by-step results table (step #, name, type, status, duration, error)
+  - Execution error summary box (if applicable)
+  - JSON export button (💾) to download full execution record for analysis
+- **Backend Storage Methods** (`storage.py` – `HouseVoiceExecutionHistory`):
+  - `list_executions_filtered()` – filtered query with optional full-text search, date range, status, chain_id
+  - `get_execution_detail()` – full execution record with calculated duration in seconds
+  - `list_execution_summary()` – minimal table display data (id, chain_id, status, started, finished, step_count, error)
+- **WebSocket Commands** (Phase 8 – 32 total commands):
+  - `house_voice/query_executions` – query execution history with all filter parameters
+  - `house_voice/get_execution_detail` – retrieve full execution details with timing info
+- **Frontend Components** (`house-voice-panel.js`):
+  - History filter panel with chain selector, status dropdown, date range inputs, search input
+  - Apply/Reset filter buttons with debounce handling
+  - Responsive history table with status badges (color-coded by status)
+  - Expandable detail rows with nested steps table and error messages
+  - JSON export functionality for each execution
+  - Comprehensive CSS styling following Indeklima Designer (teal #14b8a6, emerald #34d399)
+- **Version Synchronization** – manifest.json, const.py, websocket.py, storage.py, and frontend all at 3.7.0
+
+### Technical Details
+- `list_executions_filtered()` supports date range (ISO strings), status filter, chain_id filter, and search_text (searches step names + error messages)
+- Execution detail includes calculated `duration_seconds` based on started/finished timestamps
+- Summary view optimized for table display performance with minimal data
+- All WebSocket commands follow existing async patterns with proper error handling
+- Panel filters persist in `_historyFilters` object state during session
+- Expandable rows leverage data attributes for execution ID tracking
+- JSON export uses Blob API for client-side download (no server call)
+
+### Architecture
+- WebSocket command count increased from 30 → 32
+- Runtime data access: entry.runtime_data.execution_history (existing class, new methods)
+- Phase 8 complete – ready for Phase 9: Advanced Analytics Dashboard (future)
+
+
 ## [3.6.0] - 2026-09-25
 
 ### Added - Phase 7: Advanced Execution & Versioning

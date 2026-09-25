@@ -1,9 +1,9 @@
-# VERSION  = "3.6.0"
+# VERSION  = "3.7.0"
 # File: const.py
 # Description: Constants for House Voice Manager
 
 DOMAIN   = "house_voice"
-VERSION  = "3.6.0"
+VERSION  = "3.7.0"
 
 # Storage
 STORAGE_KEY             = "house_voice_events"
@@ -70,3 +70,111 @@ REST_API_HOST = "127.0.0.1"
 # History Database (Sprint 1)
 HISTORY_DB_NAME = "house_voice_history.db"
 HISTORY_CLEANUP_DAYS = 30
+
+# Chain Templates — Presets for common workflows (Phase 8)
+CHAIN_TEMPLATES = {
+    "simple_announcement": {
+        "name": "Simple Announcement",
+        "description": "Single TTS announcement to selected speakers",
+        "steps": [
+            {
+                "id": "announce",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": [],
+                "priority": "normal",
+            }
+        ]
+    },
+    "conditional_announcement": {
+        "name": "Conditional Announcement",
+        "description": "Check condition before announcing",
+        "steps": [
+            {
+                "id": "check",
+                "type": "CONDITION_CHECK",
+                "condition": "{{ entity_state == 'on' }}",
+                "on_true": "announce",
+                "on_false": None,
+            },
+            {
+                "id": "announce",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": [],
+                "priority": "normal",
+            }
+        ]
+    },
+    "volume_ducking": {
+        "name": "Volume Ducking",
+        "description": "Lower volume → announce → restore volume",
+        "steps": [
+            {
+                "id": "lower_volume",
+                "type": "VOLUME_SET",
+                "speakers": [],
+                "volume": 0.3,
+            },
+            {
+                "id": "announce",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": [],
+                "priority": "normal",
+            },
+            {
+                "id": "restore_volume",
+                "type": "VOLUME_SET",
+                "speakers": [],
+                "volume": 0.7,
+            }
+        ]
+    },
+    "multi_room_sequence": {
+        "name": "Multi-Room Sequence",
+        "description": "Announce to multiple rooms with delays between",
+        "steps": [
+            {
+                "id": "announce_kitchen",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": ["media_player.kokken"],
+                "priority": "normal",
+            },
+            {
+                "id": "delay_1",
+                "type": "DELAY",
+                "duration": 2,
+            },
+            {
+                "id": "announce_living_room",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": ["media_player.stue"],
+                "priority": "normal",
+            }
+        ]
+    },
+    "critical_alert": {
+        "name": "Critical Alert (Parallel)",
+        "description": "Announce to all rooms simultaneously",
+        "steps": [
+            {
+                "id": "alert",
+                "type": "TTS",
+                "text": "{{ message }}",
+                "speakers": ["group:alle_rum"],
+                "priority": "critical",
+            }
+        ]
+    }
+}
+
+# History / Execution constants
+DEFAULT_HISTORY_LIMIT = 50
+EXECUTION_STATUSES = ("in_progress", "completed", "failed", "blocked_condition")
+EXECUTION_STATUS_SUCCESS = "completed"
+EXECUTION_STATUS_FAILED = "failed"
+EXECUTION_STATUS_BLOCKED = "blocked_condition"
+EXECUTION_STATUS_IN_PROGRESS = "in_progress"

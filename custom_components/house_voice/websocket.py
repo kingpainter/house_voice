@@ -65,8 +65,12 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_batch_commit)
     websocket_api.async_register_command(hass, ws_chain_execute_parallel)
     websocket_api.async_register_command(hass, ws_condition_test)
+    websocket_api.async_register_command(hass, ws_get_chain_templates)
+    # Phase 8: Execution History Viewer
+    websocket_api.async_register_command(hass, ws_query_executions)
+    websocket_api.async_register_command(hass, ws_get_execution_detail)
     
-    _LOGGER.info("House Voice WebSocket API registered (29 commands — Phase 7 complete")
+    _LOGGER.info("House Voice WebSocket API registered (32 commands — Phase 8 in progress")
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -1119,3 +1123,120 @@ def ws_condition_test(
         _LOGGER.exception("WS error (condition/test)")
         connection.send_error(msg["id"], "unknown_error", str(err))
 
+
+
+# ── Get all chain templates ────────────────────────────────────────────────────
+
+@websocket_api.websocket_command({"type": f"{DOMAIN}/get_chain_templates"})
+@callback
+def ws_get_chain_templates(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Return all available chain templates."""
+    from .const import CHAIN_TEMPLATES
+    try:
+        templates = {
+            template_id: {
+                "id": template_id,
+                "name": data["name"],
+                "description": data["description"],
+                "step_count": len(data["steps"]),
+            }
+            for template_id, data in CHAIN_TEMPLATES.items()
+        }
+        connection.send_result(msg["id"], {"templates": templates})
+        _LOGGER.debug("House Voice: returned %d chain templates", len(templates))
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_chain_templates)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── Query Execution History ────────────────────────────────────────────────────
+
+@websocket_api.websocket_command({"type": f"{DOMAIN}/query_executions"})
+@callback
+def ws_query_executions(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Query execution history with filters.
+    
+    Request payload:
+    {
+        "type": "house_voice/query_executions",
+        "chain_id": "chain_1",          # optional
+        "status": "completed",           # optional: in_progress|completed|failed|blocked_condition
+        "start_date": "2026-09-01T00:00:00Z",  # optional (ISO format)
+        "end_date": "2026-09-30T23:59:59Z",    # optional (ISO format)
+        "search_text": "kitchen",        # optional: search in step names
+        "limit": 50                      # optional, default 50
+    }
+    """
+    try:
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        chain_id = msg.get("chain_id")
+        status = msg.get("status")
+        start_date = msg.get("start_date")
+        end_date = msg.get("end_date")
+        search_text = msg.get("search_text")
+        limit = msg.get("limit", 50)
+        
+        results = history.list_executions_filtered(
+            chain_id=chain_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            search_text=search_text
+        )
+        
+        connection.send_result(msg["id"], {"executions": results})
+        _LOGGER.debug("House Voice: returned %d filtered executions", len(results))
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (query_executions)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({"type": f"{DOMAIN}/get_execution_detail"})
+@callback
+def ws_get_execution_detail(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Return full execution record with all step details.
+    
+    Request payload:
+    {
+        "type": "house_voice/get_execution_detail",
+        "exec_id": "exec_abc123"
+    }
+    """
+    try:
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        exec_id = msg.get("exec_id")
+        if not exec_id:
+            connection.send_error(msg["id"], "invalid_request", "exec_id required")
+            return
+        
+        execution = history.get_execution_detail(exec_id)
+        if not execution:
+            connection.send_error(msg["id"], "not_found", f"Execution {exec_id} not found")
+            return
+        
+        connection.send_result(msg["id"], {"execution": execution})
+        _LOGGER.debug("House Voice: returned execution detail for %s", exec_id)
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_execution_detail)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
