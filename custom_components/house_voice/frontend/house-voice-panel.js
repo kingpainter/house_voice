@@ -1,5 +1,5 @@
 // File: house-voice-panel.js
-// Version: 3.11.0
+// Version: 3.12.0
 // Description: House Voice Manager sidebar panel.
 //              Tabs: Events | Groups | History
 //              Design: Indeklima Designer – teal #14b8a6 / emerald #34d399
@@ -8,7 +8,7 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.11.0";
+    this._version       = "3.12.0";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
@@ -2463,6 +2463,735 @@ class HouseVoicePanel extends HTMLElement {
       .history-row { grid-template-columns: 70px 1fr 80px; }
       .history-id  { display: none; }
     }
+    
+/* ===== ANALYTICS SECTION (Phase 11) ===== */
+
+.analytics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0;
+}
+
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(20,184,166,0.06), rgba(52,211,153,0.03));
+  border-radius: var(--card-radius);
+  border: 1px solid var(--div);
+  animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.analytics-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analytics-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.analytics-icon {
+  font-size: 28px;
+}
+
+.analytics-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.refresh-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.refresh-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(20, 184, 166, 0.3);
+}
+
+.analytics-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 0 24px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.help-icon:hover {
+  opacity: 1;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  background: var(--bg2);
+  border: 1px solid var(--div);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-select:hover,
+.filter-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+  outline: none;
+}
+
+.analytics-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0 24px 24px;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(20, 184, 166, 0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.metric-card {
+  background: var(--bg2);
+  border: 1px solid var(--div);
+  padding: 18px;
+  border-radius: var(--card-radius);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.metric-card.metric-primary {
+  border-left: 3px solid var(--accent);
+}
+
+.metric-card.metric-warning {
+  border-left: 3px solid #ef4444;
+}
+
+.metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(20, 184, 166, 0.12);
+  border-color: var(--accent);
+}
+
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+.metric-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.metric-icon {
+  font-size: 20px;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.metric-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.metric-trend-icon {
+  font-size: 16px;
+}
+
+.analytics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--div);
+}
+
+.section-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.section-info {
+  flex: 1;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.section-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.table-wrapper {
+  background: var(--bg2);
+  border: 1px solid var(--div);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 40px 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(20,184,166,0.1), rgba(52,211,153,0.05));
+  border-bottom: 2px solid var(--div);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 40px 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--div);
+  transition: all 0.2s;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-row:hover {
+  background: linear-gradient(90deg, rgba(20,184,166,0.06), transparent);
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+
+.table-cell {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-column {
+  text-align: center;
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.rank-0 { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.rank-1 { background: linear-gradient(135deg, #d4d4d8, #a1a1a1); }
+.rank-2 { background: linear-gradient(135deg, #a16207, #854d0e); }
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 12px;
+  height: 200px;
+  padding: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--div);
+  border-radius: var(--card-radius);
+}
+
+.trend-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.trend-bar-group {
+  width: 100%;
+  height: 150px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.trend-bar {
+  width: 100%;
+  max-width: 40px;
+  background: linear-gradient(180deg, var(--accent), var(--accent2));
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.trend-bar:hover {
+  filter: brightness(1.1);
+}
+
+.trend-count {
+  color: white;
+  font-weight: 600;
+  font-size: 11px;
+  padding-top: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.trend-bar:hover .trend-count {
+  opacity: 1;
+}
+
+.trend-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.trend-rate {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.trend-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bottleneck-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bottleneck-item {
+  background: var(--bg2);
+  border-left: 4px solid;
+  padding: 14px 16px;
+  border-radius: 4px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bottleneck-item.bottleneck-critical {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.bottleneck-item.bottleneck-high {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.bottleneck-item.bottleneck-medium {
+  border-left-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.bottleneck-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bottleneck-step {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bottleneck-metric {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bottleneck-timeline {
+  margin: 10px 0;
+}
+
+.timeline-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.timeline-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.bottleneck-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.metric-box {
+  background: rgba(20, 184, 166, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.step-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.step-column {
+  background: var(--bg2);
+  border: 1px solid var(--div);
+  border-top: 3px solid;
+  border-radius: var(--card-radius);
+  padding: 16px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.step-column.step-slowest {
+  border-top-color: #ef4444;
+}
+
+.step-column.step-fastest {
+  border-top-color: #10b981;
+}
+
+.step-column.step-mostused {
+  border-top-color: var(--accent);
+}
+
+.step-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--div);
+}
+
+.step-icon {
+  font-size: 18px;
+}
+
+.step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-item {
+  padding: 10px;
+  background: rgba(20, 184, 166, 0.05);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+  animation: slideIn 0.3s ease-out;
+}
+
+.step-item.step-item-rank-0 {
+  animation-delay: 0s;
+}
+
+.step-item.step-item-rank-1 {
+  animation-delay: 0.05s;
+}
+
+.step-item.step-item-rank-2 {
+  animation-delay: 0.1s;
+}
+
+.step-item.step-item-rank-3 {
+  animation-delay: 0.15s;
+}
+
+.step-item.step-item-rank-4 {
+  animation-delay: 0.2s;
+}
+
+.step-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-metric {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .analytics-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .table-header,
+  .table-row {
+    grid-template-columns: 30px 1.5fr 1fr 1fr;
+  }
+
+  .step-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .analytics-container {
+    gap: 16px;
+    padding: 0;
+  }
+
+  .analytics-header {
+    padding: 16px;
+    flex-direction: column;
+  }
+
+  .analytics-filters {
+    padding: 0 16px;
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-content {
+    padding: 0 16px 16px;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .table-header,
+  .table-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .trend-chart {
+    height: 150px;
+    gap: 8px;
+    padding: 16px;
+  }
+
+  .trend-bar-group {
+    height: 100px;
+  }
+
+  .step-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* END ANALYTICS SECTION */
+
     `;
   }
 
@@ -2651,188 +3380,360 @@ class HouseVoicePanel extends HTMLElement {
   // ── Analytics Rendering ────────────────────────────────────────────────────
 
   _analyticsHTML() {
-    if (this._loading) return `<div class="loading">📊 Indlæser analytik...</div>`;
-    
     return `
-      <div class="analytics-wrapper">
-        <div class="analytics-filters">
-          <input type="date" id="analytics-start" value="${this._analyticsFilters.startDate || ''}"
-            placeholder="Start date">
-          <input type="date" id="analytics-end" value="${this._analyticsFilters.endDate || ''}"
-            placeholder="End date">
-          <select id="analytics-chain" data-value="${this._analyticsFilters.chainId || ''}">
-            <option value="">Alle kæder</option>
-            ${Object.entries(this._chains).map(([id, ch]) => 
-              `<option value="${id}" ${this._analyticsFilters.chainId === id ? 'selected' : ''}>
-                ${ch.name || id}
-              </option>`
-            ).join('')}
-          </select>
-          <button class="btn btn-apply" id="analytics-apply" title="Anvend valgte filtre">Anvend filter</button>
-          <button class="btn btn-export-csv" id="analytics-export">📥 Eksportér CSV</button>
+      <div class="analytics-container">
+        <div class="analytics-header">
+          <div class="analytics-title-group">
+            <h2 class="analytics-title">
+              <span class="analytics-icon">📊</span>
+              Analytics
+            </h2>
+            <p class="analytics-subtitle">Chain execution performance & insights</p>
+          </div>
+          <button class="refresh-button" @click="${() => this.requestUpdate()}">
+            <span>🔄</span> Refresh
+          </button>
         </div>
 
-        ${this._renderMetricsWidget()}
-        ${this._renderChainPerformance()}
-        ${this._renderTrendChart()}
-        ${this._renderBottleneckAnalysis()}
-        ${this._renderStepAnalytics()}
+        <div class="analytics-filters">
+          <div class="filter-group">
+            <label class="filter-label">
+              Time Range
+              <span class="help-icon" title="Select the time period for analytics data">?</span>
+            </label>
+            <select class="filter-select" @change="${(e) => this.analyticsTimeRange = e.target.value}">
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label">
+              Chain Filter
+              <span class="help-icon" title="Filter analytics by specific chain">?</span>
+            </label>
+            <select class="filter-select" @change="${(e) => this.analyticsChainFilter = e.target.value}">
+              <option value="">All Chains</option>
+              ${this.chains.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="analytics-content">
+          ${this.isLoadingAnalytics ? `
+            <div class="loading-container">
+              <div class="spinner"></div>
+              <p>Loading analytics...</p>
+            </div>
+          ` : `
+            <div class="metrics-grid">
+              ${this._renderMetricsWidget()}
+            </div>
+
+            <div class="analytics-section">
+              ${this._renderChainPerformance()}
+            </div>
+
+            <div class="analytics-section">
+              ${this._renderTrendChart()}
+            </div>
+
+            <div class="analytics-section">
+              ${this._renderBottleneckAnalysis()}
+            </div>
+
+            <div class="analytics-section">
+              ${this._renderStepAnalytics()}
+            </div>
+          `}
+        </div>
       </div>
     `;
   }
 
   _renderMetricsWidget() {
-    const stats = this._analytics.statistics || {};
-    const successRate = (stats.success_rate || 0).toFixed(1);
-    const total = stats.total_executions || 0;
-    const failed = stats.failed_executions || 0;
-    const avgDuration = (stats.avg_duration_seconds || 0).toFixed(2);
+    const data = this.analyticsData || {};
+    const successRate = data.successRate || 0;
+    const avgDuration = data.avgDuration || 0;
+    const totalRuns = data.totalRuns || 0;
+    const errorRate = data.errorRate || 0;
+
+    const getTrendIcon = (value) => {
+      if (value >= 95) return '📈';
+      if (value >= 80) return '→';
+      return '📉';
+    };
+
+    const getTrendLabel = (value) => {
+      if (value >= 95) return 'Excellent';
+      if (value >= 80) return 'Good';
+      if (value >= 70) return 'Fair';
+      return 'Needs Attention';
+    };
 
     return `
-      <div class="metrics-widget">
-        <div class="metric-card">
-          <div class="metric-label">Succes rate</div>
-          <div class="metric-value">${successRate}%</div>
-          <div class="metric-bar">
-            <div class="metric-progress" style="width: ${successRate}%"></div>
-          </div>
+      <div class="metric-card metric-primary">
+        <div class="metric-header">
+          <span class="metric-icon">✅</span>
+          <span class="metric-label">Success Rate</span>
+          <span class="help-icon" title="Percentage of chains that completed successfully">?</span>
         </div>
-        <div class="metric-card">
-          <div class="metric-label">I alt eksekveringer</div>
-          <div class="metric-value">${total}</div>
+        <div class="metric-value">${successRate.toFixed(1)}%</div>
+        <div class="metric-footer">
+          <span class="metric-trend-icon">${getTrendIcon(successRate)}</span>
+          <span class="metric-trend-label">${getTrendLabel(successRate)}</span>
         </div>
-        <div class="metric-card">
-          <div class="metric-label">Mislykkede</div>
-          <div class="metric-value" style="color: #ef4444">${failed}</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-icon">⏱️</span>
+          <span class="metric-label">Avg Duration</span>
+          <span class="help-icon" title="Average time for chain execution">?</span>
         </div>
-        <div class="metric-card">
-          <div class="metric-label">Gennemsnit varighed</div>
-          <div class="metric-value">${avgDuration}s</div>
+        <div class="metric-value">${avgDuration.toFixed(1)}s</div>
+        <div class="metric-footer">
+          <span class="metric-trend-icon">⏰</span>
+          <span class="metric-trend-label">Performance</span>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-icon">🔄</span>
+          <span class="metric-label">Total Runs</span>
+          <span class="help-icon" title="Total number of chain executions">?</span>
+        </div>
+        <div class="metric-value">${totalRuns}</div>
+        <div class="metric-footer">
+          <span class="metric-trend-icon">📊</span>
+          <span class="metric-trend-label">All Time</span>
+        </div>
+      </div>
+
+      <div class="metric-card metric-warning">
+        <div class="metric-header">
+          <span class="metric-icon">⚠️</span>
+          <span class="metric-label">Error Rate</span>
+          <span class="help-icon" title="Percentage of chains that failed">?</span>
+        </div>
+        <div class="metric-value">${errorRate.toFixed(1)}%</div>
+        <div class="metric-footer">
+          <span class="metric-trend-icon">🔴</span>
+          <span class="metric-trend-label">Monitor</span>
         </div>
       </div>
     `;
   }
 
-  _renderChainPerformance() {
-    const chains = this._analytics.chainPerformance || [];
-    if (!chains.length) return '';
+
+    _renderChainPerformance() {
+    const chains = this.analyticsData?.chainPerformance || [];
+
+    if (chains.length === 0) {
+      return `
+        <div class="section-header">
+          <span class="section-icon">🏆</span>
+          <div class="section-info">
+            <h3 class="section-title">Chain Performance</h3>
+            <p class="section-subtitle">Ranked by success rate and speed</p>
+          </div>
+        </div>
+        <div class="empty-state">
+          <p>No chain performance data available yet</p>
+        </div>
+      `;
+    }
 
     return `
-      <div class="section">
-        <div class="section-title">Kæde performance</div>
-        <div class="chain-performance-table">
-          <div class="table-header">
-            <div class="col-name">Kæde</div>
-            <div class="col-executions">Eksekveringer</div>
-            <div class="col-success">Succes %</div>
-            <div class="col-duration">Gennem. varig.</div>
-          </div>
-          ${chains.map(ch => `
-            <div class="table-row">
-              <div class="col-name">${ch.chain_name || ch.chain_id}</div>
-              <div class="col-executions">${ch.executions || 0}</div>
-              <div class="col-success">
-                <span class="badge" style="background: ${(ch.success_rate || 0) > 80 ? '#10b981' : '#f59e0b'}">
-                  ${(ch.success_rate || 0).toFixed(1)}%
-                </span>
-              </div>
-              <div class="col-duration">${(ch.avg_duration_seconds || 0).toFixed(2)}s</div>
+      <div class="section-header">
+        <span class="section-icon">🏆</span>
+        <div class="section-info">
+          <h3 class="section-title">Chain Performance</h3>
+          <p class="section-subtitle">Ranked by success rate and speed</p>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <div class="table-header">
+          <div class="table-cell rank-column">Rank</div>
+          <div class="table-cell">Chain Name</div>
+          <div class="table-cell">Success Rate</div>
+          <div class="table-cell">Avg Duration</div>
+          <div class="table-cell">Last Run</div>
+        </div>
+
+        ${chains.slice(0, 10).map((chain, idx) => `
+          <div class="table-row">
+            <div class="table-cell rank-column">
+              <span class="rank-badge rank-${idx}">${idx + 1}</span>
             </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderTrendChart() {
-    const data = this._trendData || [];
-    if (!data.length) return '';
-
-    const maxCount = Math.max(...data.map(d => d.count || 0), 1);
-    return `
-      <div class="section">
-        <div class="section-title">Eksekverings trend (7 dage)</div>
-        <div class="trend-chart">
-          ${data.map(d => `
-            <div class="trend-bar" title="${d.date}: ${d.count} eksekveringer, ${d.successRate}% succes">
-              <div class="trend-fill" style="height: ${(d.count / maxCount * 100)}%"></div>
-              <div class="trend-label">${d.date.slice(5)}</div>
+            <div class="table-cell">${chain.name}</div>
+            <div class="table-cell">
+              <span class="badge badge-success">${chain.successRate.toFixed(1)}%</span>
             </div>
-          `).join('')}
-        </div>
+            <div class="table-cell">${chain.avgDuration.toFixed(2)}s</div>
+            <div class="table-cell">${new Date(chain.lastRun).toLocaleDateString('da-DK')}</div>
+          </div>
+        `).join('')}
       </div>
     `;
   }
 
-  _renderBottleneckAnalysis() {
-    const bottlenecks = this._bottleneckData || [];
-    if (!bottlenecks.length) return '';
+
+    _renderTrendChart() {
+    const trends = this.analyticsData?.trends || [];
+    const days = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
+
+    if (trends.length === 0) {
+      return '';
+    }
+
+    const maxValue = Math.max(...trends.map(t => t.count), 1);
 
     return `
-      <div class="section">
-        <div class="section-title">⚠️ Flaskehalse (langsomste steps)</div>
-        <div class="bottleneck-list">
-          ${bottlenecks.map((b, i) => `
-            <div class="bottleneck-item">
-              <div class="bottleneck-rank">#${i + 1}</div>
-              <div class="bottleneck-info">
-                <div class="bottleneck-name">${b.name}</div>
-                <div class="bottleneck-type">${b.type}</div>
-              </div>
-              <div class="bottleneck-metrics">
-                <span class="metric-duration">⏱️ ${b.avgDuration.toFixed(2)}s</span>
-                <span class="metric-failure" style="color: ${b.failureRate > 0.1 ? '#ef4444' : '#10b981'}">
-                  ❌ ${(b.failureRate * 100).toFixed(1)}%
-                </span>
+      <div class="section-header">
+        <span class="section-icon">📈</span>
+        <div class="section-info">
+          <h3 class="section-title">7-Day Trend</h3>
+          <p class="section-subtitle">Execution pattern over the past week</p>
+        </div>
+      </div>
+
+      <div class="trend-chart">
+        ${trends.map((trend, idx) => `
+          <div class="trend-bar-container">
+            <div class="trend-bar-group">
+              <div class="trend-bar" style="height: ${(trend.count / maxValue) * 150}px;">
+                <span class="trend-count">${trend.count}</span>
               </div>
             </div>
-          `).join('')}
-        </div>
+            <div class="trend-label">${days[idx]}</div>
+            <div class="trend-rate">${trend.rate.toFixed(1)}%</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="trend-legend">
+        <span class="legend-item">Daily execution count and success rate</span>
       </div>
     `;
   }
 
-  _renderStepAnalytics() {
-    const steps = this._analytics.stepAnalytics || {};
-    const slowest = steps.slowest_steps || [];
-    const fastest = steps.fastest_steps || [];
-    const mostUsed = steps.most_used_steps || [];
+
+    _renderBottleneckAnalysis() {
+    const bottlenecks = this.analyticsData?.bottlenecks || [];
+
+    if (bottlenecks.length === 0) {
+      return '';
+    }
+
+    const avgDuration = bottlenecks.reduce((sum, b) => sum + b.avgDuration, 0) / bottlenecks.length;
 
     return `
-      <div class="section">
-        <div class="section-title">Step-niveau analyse</div>
-        <div class="step-analytics-grid">
-          <div class="step-column">
-            <div class="step-column-title">🐢 Langsomste steps</div>
-            ${slowest.slice(0, 5).map(s => `
-              <div class="step-item">
-                <div class="step-name">${s.name || s.step_type}</div>
-                <div class="step-value">${s.avg_duration_seconds?.toFixed(2)}s</div>
+      <div class="section-header">
+        <span class="section-icon">🚦</span>
+        <div class="section-info">
+          <h3 class="section-title">Bottleneck Analysis</h3>
+          <p class="section-subtitle">Slowest steps requiring optimization</p>
+        </div>
+      </div>
+
+      <div class="bottleneck-list">
+        ${bottlenecks.slice(0, 5).map(b => {
+          const timePercent = (b.avgDuration / avgDuration) * 100;
+          const severity = timePercent > 70 ? 'critical' : timePercent > 40 ? 'high' : 'medium';
+
+          return `
+            <div class="bottleneck-item bottleneck-${severity}">
+              <div class="bottleneck-header">
+                <span class="bottleneck-step">${b.stepName}</span>
+                <span class="bottleneck-metric">${b.avgDuration.toFixed(2)}s</span>
               </div>
-            `).join('')}
+              <div class="bottleneck-timeline">
+                <div class="timeline-bar">
+                  <div class="timeline-fill" style="width: ${Math.min(timePercent, 100)}%"></div>
+                </div>
+              </div>
+              <div class="bottleneck-stats">
+                <span class="metric-box">⏱️ ${timePercent.toFixed(0)}%</span>
+                <span class="metric-box">📊 ${b.frequency}x</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+
+    _renderStepAnalytics() {
+    const stepData = this.analyticsData?.stepData || [];
+
+    if (stepData.length === 0) {
+      return '';
+    }
+
+    const fastest = stepData.reduce((min, s) => s.avgDuration < min.avgDuration ? s : min);
+    const slowest = stepData.reduce((max, s) => s.avgDuration > max.avgDuration ? s : max);
+    const mostUsed = stepData.reduce((max, s) => s.frequency > max.frequency ? s : max);
+
+    return `
+      <div class="section-header">
+        <span class="section-icon">⚙️</span>
+        <div class="section-info">
+          <h3 class="section-title">Step Analytics</h3>
+          <p class="section-subtitle">Performance breakdown by step</p>
+        </div>
+      </div>
+
+      <div class="step-analytics-grid">
+        <div class="step-column step-slowest">
+          <div class="step-column-header">
+            <span class="step-icon">🐢</span>
+            <span class="step-title">Slowest Step</span>
+            <span class="help-icon" title="Step taking the most time">?</span>
           </div>
-          <div class="step-column">
-            <div class="step-column-title">🚀 Hurtigste steps</div>
-            ${fastest.slice(0, 5).map(s => `
-              <div class="step-item">
-                <div class="step-name">${s.name || s.step_type}</div>
-                <div class="step-value">${s.avg_duration_seconds?.toFixed(2)}s</div>
-              </div>
-            `).join('')}
+          <div class="step-list">
+            <div class="step-item step-item-rank-0">
+              <div class="step-name">${slowest.name}</div>
+              <div class="step-metric">${slowest.avgDuration.toFixed(2)}s</div>
+            </div>
           </div>
-          <div class="step-column">
-            <div class="step-column-title">📊 Mest brugt</div>
-            ${mostUsed.slice(0, 5).map(s => `
-              <div class="step-item">
-                <div class="step-name">${s.name || s.step_type}</div>
-                <div class="step-value">${s.total_count || 0}×</div>
-              </div>
-            `).join('')}
+        </div>
+
+        <div class="step-column step-fastest">
+          <div class="step-column-header">
+            <span class="step-icon">🚀</span>
+            <span class="step-title">Fastest Step</span>
+            <span class="help-icon" title="Step completing in minimal time">?</span>
+          </div>
+          <div class="step-list">
+            <div class="step-item step-item-rank-0">
+              <div class="step-name">${fastest.name}</div>
+              <div class="step-metric">${fastest.avgDuration.toFixed(3)}s</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-column step-mostused">
+          <div class="step-column-header">
+            <span class="step-icon">📌</span>
+            <span class="step-title">Most Used Step</span>
+            <span class="help-icon" title="Step used in most chains">?</span>
+          </div>
+          <div class="step-list">
+            <div class="step-item step-item-rank-0">
+              <div class="step-name">${mostUsed.name}</div>
+              <div class="step-metric">${mostUsed.frequency}x</div>
+            </div>
           </div>
         </div>
       </div>
     `;
   }
+
 
   async _exportAnalyticsData() {
     const stats = this._analytics.statistics || {};
