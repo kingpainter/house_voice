@@ -8,14 +8,14 @@ class HouseVoicePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._version       = "3.8.0";
+    this._version       = "3.9.0";
     this._hass          = null;
     this._events        = {};
     this._groups        = {};
     this._conditions    = {};      // { id: { label, entity_id, state } }
     this._players       = [];
     this._history       = [];
-    this._tab           = "events";       // "events" | "groups" | "history" | "chains"
+    this._tab           = "events";       // "events" | "groups" | "history" | "chains" | "analytics"
     this._editingId     = null;
     this._editingGroup  = null;
     this._editingCond   = null;    // condition_id being edited
@@ -36,6 +36,15 @@ class HouseVoicePanel extends HTMLElement {
     this._currentChain  = null;    // currently active chain
     this._execHistory   = [];      // [ { chainId, timestamp, steps, success, duration } ]
     this._analytics      = {};      // { statistics: {...}, chainPerf: [...], stepAnalytics: {...}, timeline: {...} }
+    this._analyticsFilters = {
+      startDate: null,
+      endDate: null,
+      chainId: null
+    };
+    this._selectedMetricType = "success_rate";  // For metrics widget
+    this._bottleneckData = [];  // Cached bottleneck analysis
+    this._trendData = [];  // Cached trend data
+    this._heatmapData = {};  // Performance heatmap
     this._historyFilters = {
       chainId: null,
       status: null,
@@ -74,6 +83,7 @@ class HouseVoicePanel extends HTMLElement {
         this._loadConditions(),
         this._loadPlayers(),
         this._loadHistory(),
+        this._loadAnalytics(),
       ]);
     } finally {
       this._loading = false;
@@ -489,7 +499,329 @@ class HouseVoicePanel extends HTMLElement {
         <span class="stat-pill pill-neutral">🔈 ${groupCount} grupper</span>
         <span class="stat-pill pill-accent">📊 ${todayCount} i dag</span>
         ${quietLabel}
-      </div>`;
+      </div>
+    /* ═ PHASE 10: ANALYTICS DASHBOARD ═ */
+
+    .analytics-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .analytics-filters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px;
+      background: var(--bg2);
+      border-radius: var(--card-radius);
+      border: 1px solid var(--div);
+    }
+
+    .analytics-filters input,
+    .analytics-filters select {
+      padding: 6px 10px;
+      border: 1px solid var(--div);
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+
+    .btn-apply, .btn-export-csv {
+      padding: 6px 12px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+
+    .btn-apply:hover, .btn-export-csv:hover {
+      opacity: 0.9;
+    }
+
+    /* Metrics Widget */
+    .metrics-widget {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .metric-card {
+      background: var(--bg2);
+      border: 1px solid var(--div);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--sub);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      margin-bottom: 8px;
+    }
+
+    .metric-bar {
+      width: 100%;
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .metric-progress {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+    }
+
+    /* Section & Table */
+    .section {
+      background: var(--bg2);
+      border: 1px solid var(--div);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .chain-performance-table {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--bg3);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--sub);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .table-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--bg2);
+      border-top: 1px solid var(--div);
+      font-size: 12px;
+    }
+
+    .col-name { color: var(--text); }
+    .col-executions, .col-success, .col-duration {
+      text-align: center;
+      color: var(--sub);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Trend Chart */
+    .trend-chart {
+      display: flex;
+      gap: 4px;
+      height: 100px;
+      align-items: flex-end;
+    }
+
+    .trend-bar {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .trend-fill {
+      width: 100%;
+      background: linear-gradient(180deg, var(--accent2), var(--accent));
+      border-radius: 2px 2px 0 0;
+      transition: background 0.2s;
+    }
+
+    .trend-bar:hover .trend-fill {
+      opacity: 0.8;
+    }
+
+    .trend-label {
+      font-size: 10px;
+      color: var(--sub);
+      margin-top: 4px;
+      white-space: nowrap;
+    }
+
+    /* Bottleneck Analysis */
+    .bottleneck-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bottleneck-item {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      background: var(--bg);
+      border-left: 3px solid #f59e0b;
+      border-radius: 4px;
+    }
+
+    .bottleneck-rank {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      width: 30px;
+      text-align: center;
+    }
+
+    .bottleneck-info {
+      flex: 1;
+    }
+
+    .bottleneck-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .bottleneck-type {
+      font-size: 11px;
+      color: var(--sub);
+      margin-top: 2px;
+    }
+
+    .bottleneck-metrics {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    .metric-duration {
+      color: var(--sub);
+    }
+
+    .metric-failure {
+      font-weight: 600;
+    }
+
+    /* Step Analytics Grid */
+    .step-analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .step-column {
+      background: var(--bg);
+      border: 1px solid var(--div);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .step-column-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--div);
+    }
+
+    .step-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--div);
+      font-size: 11px;
+    }
+
+    .step-item:last-child {
+      border-bottom: none;
+    }
+
+    .step-name {
+      color: var(--text);
+      flex: 1;
+    }
+
+    .step-value {
+      color: var(--accent);
+      font-weight: 600;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* Responsive Analytics */
+    @media (max-width: 600px) {
+      .metrics-widget {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .table-header,
+      .table-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .step-analytics-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .bottleneck-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .analytics-filters {
+        flex-direction: column;
+      }
+
+      .analytics-filters input,
+      .analytics-filters select,
+      .btn-apply,
+      .btn-export-csv {
+        width: 100%;
+      }
+    }
+`;
   }
 
   // ── Notification HTML ──────────────────────────────────────────────────────
@@ -1241,10 +1573,11 @@ class HouseVoicePanel extends HTMLElement {
 
 
   _render() {
-    const isEvents  = this._tab === "events";
-    const isGroups  = this._tab === "groups";
-    const isChains  = this._tab === "chains";
-    const isHistory = this._tab === "history";
+    const isEvents   = this._tab === "events";
+    const isGroups   = this._tab === "groups";
+    const isChains   = this._tab === "chains";
+    const isHistory  = this._tab === "history";
+    const isAnalytics = this._tab === "analytics";
 
     this.shadowRoot.innerHTML = `
       <style>${this._css()}</style>
@@ -1282,6 +1615,7 @@ class HouseVoicePanel extends HTMLElement {
             <button class="tab ${isGroups  ? 'active' : ''}" data-tab="groups">🔈 Grupper</button>
             <button class="tab ${isChains  ? 'active' : ''}" data-tab="chains">⛓️ Kæder</button>
             <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
+            <button class="tab ${isAnalytics ? 'active' : ''}" data-tab="analytics">📊 Analyse</button>
           </div>
         </div>
 
@@ -1298,11 +1632,12 @@ class HouseVoicePanel extends HTMLElement {
           ${this._notifHTML()}
 
           <div class="content-area">
-            ${isEvents  ? this._eventListHTML() : ""}
-            ${isEvents  ? this._condLibHTML()   : ""}
-            ${isGroups  ? this._groupListHTML() : ""}
-            ${isChains  ? this._chainsHTML()    : ""}
-            ${isHistory ? this._historyHTML()   : ""}
+            ${isEvents   ? this._eventListHTML() : ""}
+            ${isEvents   ? this._condLibHTML()   : ""}
+            ${isGroups   ? this._groupListHTML() : ""}
+            ${isChains   ? this._chainsHTML()    : ""}
+            ${isHistory  ? this._historyHTML()   : ""}
+            ${isAnalytics ? this._analyticsHTML() : ""}
           </div>
         </div>
 
@@ -2057,3 +2392,627 @@ class HouseVoicePanel extends HTMLElement {
 if (!customElements.get("house-voice-panel")) {
   customElements.define("house-voice-panel", HouseVoicePanel);
 }
+
+  // ── Analytics Loading ──────────────────────────────────────────────────────
+
+  async _loadAnalytics() {
+    try {
+      this._loading = true;
+      const [stats, perf, steps, timeline] = await Promise.all([
+        this._hass.callWS({
+          type: "house_voice/ws_get_analytics_statistics",
+          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
+          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0],
+          chain_id: this._analyticsFilters.chainId || null
+        }),
+        this._hass.callWS({
+          type: "house_voice/ws_get_chain_performance",
+          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
+          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
+        }),
+        this._hass.callWS({
+          type: "house_voice/ws_get_step_analytics",
+          start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
+          end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
+        }),
+        this._hass.callWS({
+          type: "house_voice/ws_get_execution_timeline",
+          chain_id: this._analyticsFilters.chainId || Object.keys(this._chains)[0] || "all",
+          limit: 50
+        })
+      ]);
+
+      this._analytics = {
+        statistics: stats,
+        chainPerformance: perf || [],
+        stepAnalytics: steps || {},
+        timeline: timeline || {}
+      };
+
+      this._bottleneckData = this._calculateBottlenecks();
+      this._trendData = this._calculateTrends();
+      this._heatmapData = this._buildHeatmapData();
+      this._loading = false;
+    } catch (e) {
+      console.error("House Voice: load analytics", e);
+      this._analytics = {};
+      this._loading = false;
+    }
+  }
+
+  _calculateBottlenecks() {
+    const steps = this._analytics.stepAnalytics?.slowest_steps || [];
+    return steps.slice(0, 5).map(s => ({
+      name: s.name || s.step_type,
+      type: s.step_type,
+      avgDuration: s.avg_duration_seconds || 0,
+      failureRate: (s.failed_count || 0) / (s.total_count || 1)
+    }));
+  }
+
+  _calculateTrends() {
+    const timeline = this._analytics.timeline?.executions || [];
+    const daily = {};
+    timeline.forEach(ex => {
+      const date = (ex.started || "").split('T')[0];
+      if (!daily[date]) daily[date] = { count: 0, success: 0, duration: 0 };
+      daily[date].count++;
+      if (ex.status === "completed") daily[date].success++;
+      daily[date].duration += (ex.duration_seconds || 0);
+    });
+    return Object.entries(daily).map(([date, data]) => ({
+      date,
+      count: data.count,
+      successRate: (data.success / data.count * 100).toFixed(1),
+      avgDuration: (data.duration / data.count).toFixed(2)
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  _buildHeatmapData() {
+    const perf = this._analytics.chainPerformance || [];
+    const stepTypes = {};
+    const steps = this._analytics.stepAnalytics || {};
+    
+    if (steps.most_used_steps) {
+      steps.most_used_steps.forEach(s => {
+        stepTypes[s.step_type] = {
+          type: s.step_type,
+          count: s.total_count || 0,
+          avgDuration: s.avg_duration_seconds || 0,
+          failureRate: ((s.failed_count || 0) / (s.total_count || 1) * 100).toFixed(1)
+        };
+      });
+    }
+    return stepTypes;
+  }
+
+  // ── Analytics Rendering ────────────────────────────────────────────────────
+
+  _analyticsHTML() {
+    if (this._loading) return `<div class="loading">📊 Indlæser analytik...</div>`;
+    
+    return `
+      <div class="analytics-wrapper">
+        <div class="analytics-filters">
+          <input type="date" id="analytics-start" value="${this._analyticsFilters.startDate || ''}"
+            placeholder="Start date">
+          <input type="date" id="analytics-end" value="${this._analyticsFilters.endDate || ''}"
+            placeholder="End date">
+          <select id="analytics-chain" data-value="${this._analyticsFilters.chainId || ''}">
+            <option value="">Alle kæder</option>
+            ${Object.entries(this._chains).map(([id, ch]) => 
+              `<option value="${id}" ${this._analyticsFilters.chainId === id ? 'selected' : ''}>
+                ${ch.name || id}
+              </option>`
+            ).join('')}
+          </select>
+          <button class="btn btn-apply" id="analytics-apply">Anvend filter</button>
+          <button class="btn btn-export-csv" id="analytics-export">📥 Eksportér CSV</button>
+        </div>
+
+        ${this._renderMetricsWidget()}
+        ${this._renderChainPerformance()}
+        ${this._renderTrendChart()}
+        ${this._renderBottleneckAnalysis()}
+        ${this._renderStepAnalytics()}
+      </div>
+    `;
+  }
+
+  _renderMetricsWidget() {
+    const stats = this._analytics.statistics || {};
+    const successRate = (stats.success_rate || 0).toFixed(1);
+    const total = stats.total_executions || 0;
+    const failed = stats.failed_executions || 0;
+    const avgDuration = (stats.avg_duration_seconds || 0).toFixed(2);
+
+    return `
+      <div class="metrics-widget">
+        <div class="metric-card">
+          <div class="metric-label">Succes rate</div>
+          <div class="metric-value">${successRate}%</div>
+          <div class="metric-bar">
+            <div class="metric-progress" style="width: ${successRate}%"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">I alt eksekveringer</div>
+          <div class="metric-value">${total}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Mislykkede</div>
+          <div class="metric-value" style="color: #ef4444">${failed}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Gennemsnit varighed</div>
+          <div class="metric-value">${avgDuration}s</div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderChainPerformance() {
+    const chains = this._analytics.chainPerformance || [];
+    if (!chains.length) return '';
+
+    return `
+      <div class="section">
+        <div class="section-title">Kæde performance</div>
+        <div class="chain-performance-table">
+          <div class="table-header">
+            <div class="col-name">Kæde</div>
+            <div class="col-executions">Eksekveringer</div>
+            <div class="col-success">Succes %</div>
+            <div class="col-duration">Gennem. varig.</div>
+          </div>
+          ${chains.map(ch => `
+            <div class="table-row">
+              <div class="col-name">${ch.chain_name || ch.chain_id}</div>
+              <div class="col-executions">${ch.executions || 0}</div>
+              <div class="col-success">
+                <span class="badge" style="background: ${(ch.success_rate || 0) > 80 ? '#10b981' : '#f59e0b'}">
+                  ${(ch.success_rate || 0).toFixed(1)}%
+                </span>
+              </div>
+              <div class="col-duration">${(ch.avg_duration_seconds || 0).toFixed(2)}s</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderTrendChart() {
+    const data = this._trendData || [];
+    if (!data.length) return '';
+
+    const maxCount = Math.max(...data.map(d => d.count || 0), 1);
+    return `
+      <div class="section">
+        <div class="section-title">Eksekverings trend (7 dage)</div>
+        <div class="trend-chart">
+          ${data.map(d => `
+            <div class="trend-bar" title="${d.date}: ${d.count} eksekveringer, ${d.successRate}% succes">
+              <div class="trend-fill" style="height: ${(d.count / maxCount * 100)}%"></div>
+              <div class="trend-label">${d.date.slice(5)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderBottleneckAnalysis() {
+    const bottlenecks = this._bottleneckData || [];
+    if (!bottlenecks.length) return '';
+
+    return `
+      <div class="section">
+        <div class="section-title">⚠️ Flaskehalse (langsomste steps)</div>
+        <div class="bottleneck-list">
+          ${bottlenecks.map((b, i) => `
+            <div class="bottleneck-item">
+              <div class="bottleneck-rank">#${i + 1}</div>
+              <div class="bottleneck-info">
+                <div class="bottleneck-name">${b.name}</div>
+                <div class="bottleneck-type">${b.type}</div>
+              </div>
+              <div class="bottleneck-metrics">
+                <span class="metric-duration">⏱️ ${b.avgDuration.toFixed(2)}s</span>
+                <span class="metric-failure" style="color: ${b.failureRate > 0.1 ? '#ef4444' : '#10b981'}">
+                  ❌ ${(b.failureRate * 100).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderStepAnalytics() {
+    const steps = this._analytics.stepAnalytics || {};
+    const slowest = steps.slowest_steps || [];
+    const fastest = steps.fastest_steps || [];
+    const mostUsed = steps.most_used_steps || [];
+
+    return `
+      <div class="section">
+        <div class="section-title">Step-niveau analyse</div>
+        <div class="step-analytics-grid">
+          <div class="step-column">
+            <div class="step-column-title">🐢 Langsomste steps</div>
+            ${slowest.slice(0, 5).map(s => `
+              <div class="step-item">
+                <div class="step-name">${s.name || s.step_type}</div>
+                <div class="step-value">${s.avg_duration_seconds?.toFixed(2)}s</div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="step-column">
+            <div class="step-column-title">🚀 Hurtigste steps</div>
+            ${fastest.slice(0, 5).map(s => `
+              <div class="step-item">
+                <div class="step-name">${s.name || s.step_type}</div>
+                <div class="step-value">${s.avg_duration_seconds?.toFixed(2)}s</div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="step-column">
+            <div class="step-column-title">📊 Mest brugt</div>
+            ${mostUsed.slice(0, 5).map(s => `
+              <div class="step-item">
+                <div class="step-name">${s.name || s.step_type}</div>
+                <div class="step-value">${s.total_count || 0}×</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async _exportAnalyticsData() {
+    const stats = this._analytics.statistics || {};
+    const chains = this._analytics.chainPerformance || [];
+    const csv = [
+      "Analytics Data Export - " + new Date().toISOString(),
+      "",
+      "STATISTICS",
+      "Total Executions," + (stats.total_executions || 0),
+      "Success Rate (%)," + ((stats.success_rate || 0).toFixed(1)),
+      "Failed Executions," + (stats.failed_executions || 0),
+      "Avg Duration (s)," + ((stats.avg_duration_seconds || 0).toFixed(2)),
+      "",
+      "CHAIN PERFORMANCE",
+      "Chain Name,Executions,Success Rate (%),Avg Duration (s)"
+    ];
+
+    chains.forEach(ch => {
+      csv.push(`"${ch.chain_name || ch.chain_id}",${ch.executions || 0},${(ch.success_rate || 0).toFixed(1)},${(ch.avg_duration_seconds || 0).toFixed(2)}`);
+    });
+
+    const blob = new Blob([csv.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "analytics_export_" + new Date().toISOString().split('T')[0] + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+
+  // ── Add Analytics CSS (insert into _css() method) ────────────────────────
+
+  // Note: The following CSS should be added to the _css() method.
+  // Add this to the return statement in _css():
+
+  // Analytics Tab Styles (add after main CSS block)
+  `.analytics-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .analytics-filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px;
+    background: var(--bg2);
+    border-radius: var(--card-radius);
+    border: 1px solid var(--div);
+  }
+
+  .analytics-filters input,
+  .analytics-filters select {
+    padding: 6px 10px;
+    border: 1px solid var(--div);
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .btn-apply, .btn-export-csv {
+    padding: 6px 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .btn-apply:hover, .btn-export-csv:hover {
+    opacity: 0.9;
+  }
+
+  /* Metrics Widget */
+  .metrics-widget {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--div);
+    border-radius: var(--card-radius);
+    padding: 16px;
+    text-align: center;
+  }
+
+  .metric-label {
+    font-size: 11px;
+    color: var(--sub);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .metric-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 8px;
+  }
+
+  .metric-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .metric-progress {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+
+  /* Chain Performance Table */
+  .section {
+    background: var(--bg2);
+    border: 1px solid var(--div);
+    border-radius: var(--card-radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .chain-performance-table {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--bg3);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg3);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--sub);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .table-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg2);
+    border-top: 1px solid var(--div);
+    font-size: 12px;
+  }
+
+  .col-name { color: var(--text); }
+  .col-executions, .col-success, .col-duration {
+    text-align: center;
+    color: var(--sub);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Trend Chart */
+  .trend-chart {
+    display: flex;
+    gap: 4px;
+    height: 100px;
+    align-items: flex-end;
+  }
+
+  .trend-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  .trend-fill {
+    width: 100%;
+    background: linear-gradient(180deg, var(--accent2), var(--accent));
+    border-radius: 2px 2px 0 0;
+    transition: background 0.2s;
+  }
+
+  .trend-bar:hover .trend-fill {
+    background: linear-gradient(180deg, var(--accent2), var(--accent));
+    opacity: 0.8;
+  }
+
+  .trend-label {
+    font-size: 10px;
+    color: var(--sub);
+    margin-top: 4px;
+    white-space: nowrap;
+  }
+
+  /* Bottleneck Analysis */
+  .bottleneck-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bottleneck-item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    background: var(--bg);
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+  }
+
+  .bottleneck-rank {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    width: 30px;
+    text-align: center;
+  }
+
+  .bottleneck-info {
+    flex: 1;
+  }
+
+  .bottleneck-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .bottleneck-type {
+    font-size: 11px;
+    color: var(--sub);
+    margin-top: 2px;
+  }
+
+  .bottleneck-metrics {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .metric-duration {
+    color: var(--sub);
+  }
+
+  .metric-failure {
+    font-weight: 600;
+  }
+
+  /* Step Analytics Grid */
+  .step-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .step-column {
+    background: var(--bg);
+    border: 1px solid var(--div);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .step-column-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--div);
+  }
+
+  .step-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--div);
+    font-size: 11px;
+  }
+
+  .step-item:last-child {
+    border-bottom: none;
+  }
+
+  .step-name {
+    color: var(--text);
+    flex: 1;
+  }
+
+  .step-value {
+    color: var(--accent);
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .metrics-widget {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .table-header,
+    .table-row {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .step-analytics-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .bottleneck-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }`
+
