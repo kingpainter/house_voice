@@ -51,9 +51,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_chain_delete)
     websocket_api.async_register_command(hass, ws_chain_get)
     websocket_api.async_register_command(hass, ws_chain_publish)
+    websocket_api.async_register_command(hass, ws_chain_validate)
     websocket_api.async_register_command(hass, ws_chain_test)
     websocket_api.async_register_command(hass, ws_list_execution_history)
-    _LOGGER.info("House Voice WebSocket API registered (20 commands)")
+    _LOGGER.info("House Voice WebSocket API registered (21 commands)")
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -683,6 +684,38 @@ async def ws_chain_publish(
         _LOGGER.exception("House Voice WS error (chain/publish)")
         connection.send_error(msg["id"], "unknown_error", str(err))
 
+
+
+@websocket_api.websocket_command({
+    "type": f"{DOMAIN}/chain/validate",
+    vol.Required("chain_data"): dict,
+})
+@callback
+def ws_chain_validate(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Validate chain definition without saving."""
+    validator = _get_chain_validator(hass)
+    if not validator:
+        connection.send_error(msg["id"], "not_ready", "House Voice validator not ready")
+        return
+    
+    try:
+        chain_data = msg["chain_data"]
+        
+        # Validate chain
+        validation = validator.validate_chain(chain_data)
+        
+        if not validation.is_valid:
+            connection.send_error(msg["id"], "invalid_chain", validation.to_dict())
+            return
+        
+        connection.send_result(msg["id"], {"valid": True, "errors": []})
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (chain/validate)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
 
 @websocket_api.websocket_command({
     "type": f"{DOMAIN}/chain/test",
