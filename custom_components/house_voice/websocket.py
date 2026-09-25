@@ -1,4 +1,4 @@
-# VERSION = "3.6.0"
+# VERSION = "3.8.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,
@@ -1250,4 +1250,168 @@ def ws_get_execution_detail(
         _LOGGER.debug("House Voice: returned execution detail for %s", exec_id)
     except Exception as err:
         _LOGGER.exception("House Voice WS error (get_execution_detail)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+# ── PHASE 9: Advanced Analytics Dashboard ──────────────────────────────────────
+
+@websocket_api.websocket_command({
+    "type":                      f"{DOMAIN}/get_analytics_statistics",
+    vol.Optional("chain_id"):    str,
+    vol.Optional("start_date"):  str,
+    vol.Optional("end_date"):    str,
+})
+@callback
+def ws_get_analytics_statistics(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get comprehensive statistics for execution history.
+    
+    Returns:
+    {
+        "total_executions": int,
+        "success_rate": float,
+        "failed_executions": int,
+        "avg_duration_seconds": float,
+        "min_duration_seconds": float,
+        "max_duration_seconds": float,
+        "step_type_distribution": {step_type: count},
+        "execution_trend": [{date, count, success_rate}]
+    }
+    """
+    try:
+        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        analytics = HouseVoiceAnalytics(history)
+        stats = analytics.get_statistics(
+            chain_id=msg.get("chain_id"),
+            start_date=msg.get("start_date"),
+            end_date=msg.get("end_date")
+        )
+        
+        connection.send_result(msg["id"], stats)
+        _LOGGER.debug("House Voice: returned analytics statistics")
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_analytics_statistics)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type":                      f"{DOMAIN}/get_chain_performance",
+    vol.Optional("start_date"):  str,
+    vol.Optional("end_date"):    str,
+})
+@callback
+def ws_get_chain_performance(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get per-chain performance metrics.
+    
+    Returns: [{chain_id, chain_name, executions, success_rate, avg_duration_seconds, last_execution}]
+    """
+    try:
+        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        analytics = HouseVoiceAnalytics(history)
+        performance = analytics.get_chain_performance(
+            start_date=msg.get("start_date"),
+            end_date=msg.get("end_date")
+        )
+        
+        connection.send_result(msg["id"], {"chains": performance})
+        _LOGGER.debug("House Voice: returned chain performance metrics")
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_chain_performance)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type":                      f"{DOMAIN}/get_step_analytics",
+    vol.Optional("start_date"):  str,
+    vol.Optional("end_date"):    str,
+})
+@callback
+def ws_get_step_analytics(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get step-level performance analytics.
+    
+    Returns:
+    {
+        "slowest_steps": [{step_type, avg_duration_seconds, total_runs}],
+        "fastest_steps": [...],
+        "most_used_steps": [...],
+        "failing_step_types": [{step_type, failure_rate, total_runs}]
+    }
+    """
+    try:
+        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        analytics = HouseVoiceAnalytics(history)
+        analytics_data = analytics.get_step_analytics(
+            start_date=msg.get("start_date"),
+            end_date=msg.get("end_date")
+        )
+        
+        connection.send_result(msg["id"], analytics_data)
+        _LOGGER.debug("House Voice: returned step analytics")
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_step_analytics)")
+        connection.send_error(msg["id"], "unknown_error", str(err))
+
+
+@websocket_api.websocket_command({
+    "type":                      f"{DOMAIN}/get_execution_timeline",
+    vol.Required("chain_id"):    str,
+    vol.Optional("limit"):       int,
+})
+@callback
+def ws_get_execution_timeline(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any]
+) -> None:
+    """Get Gantt chart data for execution timeline visualization.
+    
+    Returns: {chain_id, executions: [{exec_id, started, finished, duration_seconds, steps}]}
+    """
+    try:
+        from custom_components.house_voice.analytics import HouseVoiceAnalytics
+        
+        history = _get_execution_history(hass)
+        if not history:
+            connection.send_error(msg["id"], "not_ready", "Execution history not ready")
+            return
+        
+        analytics = HouseVoiceAnalytics(history)
+        timeline = analytics.get_execution_timeline(
+            chain_id=msg.get("chain_id"),
+            limit=msg.get("limit", 20)
+        )
+        
+        connection.send_result(msg["id"], timeline)
+        _LOGGER.debug("House Voice: returned execution timeline for %s", msg.get("chain_id"))
+    except Exception as err:
+        _LOGGER.exception("House Voice WS error (get_execution_timeline)")
         connection.send_error(msg["id"], "unknown_error", str(err))
