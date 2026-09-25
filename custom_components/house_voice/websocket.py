@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import time
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry

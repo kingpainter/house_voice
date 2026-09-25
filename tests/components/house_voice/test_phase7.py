@@ -306,7 +306,7 @@ async def test_storage_save_version(hass: HomeAssistant):
     mock_store.data = {}
     mock_store.async_save = AsyncMock()
     
-    chains = HouseVoiceChains(hass, mock_store)
+    chains = HouseVoiceChains(hass)
     
     await chains.async_save_version("chain_1", 1, {"name": "Test"})
     
@@ -327,7 +327,7 @@ async def test_storage_list_versions(hass: HomeAssistant):
         }
     }
     
-    chains = HouseVoiceChains(hass, mock_store)
+    chains = HouseVoiceChains(hass)
     versions = chains.list_versions("chain_1")
     
     assert len(versions) == 2

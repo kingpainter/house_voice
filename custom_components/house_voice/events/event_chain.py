@@ -1088,17 +1088,21 @@ class ParallelChainExecutor:
             return (True, [])
         
         try:
-            # Build dependency graph
-            graph = DependencyGraph()
-            for i, step in enumerate(steps):
-                step_id = step.get("id", f"step_{i}")
-                deps = step.get("depends_on", [])
-                graph.add_node(step_id, step)
-                for dep in deps:
-                    graph.add_edge(dep, step_id)
+            # Build dependency graph with proper step objects
+            class StepWrapper:
+                def __init__(self, step_dict, step_id):
+                    self.step_id = step_id
+                    self.depends_on = step_dict.get("depends_on", [])
+            
+            wrapped_steps = [
+                StepWrapper(step, step.get("id", f"step_{i}"))
+                for i, step in enumerate(steps)
+            ]
+            
+            graph = DependencyGraph(wrapped_steps)
             
             # Detect cycles
-            if graph.has_cycle():
+            if graph.has_cycles():
                 return (False, [{"error": "Circular dependency detected"}])
             
             # Execute in parallel
