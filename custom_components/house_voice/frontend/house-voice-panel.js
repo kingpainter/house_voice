@@ -3291,23 +3291,23 @@ class HouseVoicePanel extends HTMLElement {
       this._loading = true;
       const [stats, perf, steps, timeline] = await Promise.all([
         this._hass.callWS({
-          type: "house_voice/ws_get_analytics_statistics",
+          type: "house_voice/get_analytics_statistics",
           start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
           end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0],
           chain_id: this._analyticsFilters.chainId || null
         }),
         this._hass.callWS({
-          type: "house_voice/ws_get_chain_performance",
+          type: "house_voice/get_chain_performance",
           start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
           end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
         }),
         this._hass.callWS({
-          type: "house_voice/ws_get_step_analytics",
+          type: "house_voice/get_step_analytics",
           start_date: this._analyticsFilters.startDate || new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0],
           end_date: this._analyticsFilters.endDate || new Date().toISOString().split('T')[0]
         }),
         this._hass.callWS({
-          type: "house_voice/ws_get_execution_timeline",
+          type: "house_voice/get_execution_timeline",
           chain_id: this._analyticsFilters.chainId || Object.keys(this._chains)[0] || "all",
           limit: 50
         })
