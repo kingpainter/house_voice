@@ -108,6 +108,12 @@ def _get_engine(hass: HomeAssistant) -> Any | None:
     entry = _get_entry(hass)
     return getattr(entry.runtime_data, "engine", None) if entry else None
 
+def _get_execution_history(hass: HomeAssistant) -> Any | None:
+    """Return execution history instance or None."""
+    entry = _get_entry(hass)
+    return getattr(entry.runtime_data, "execution_history", None) if entry else None
+
+
 
 # ── Get all voice events ───────────────────────────────────────────────────────
 

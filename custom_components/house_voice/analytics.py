@@ -3,7 +3,7 @@
 
 from datetime import datetime, timedelta
 from collections import defaultdict
-from typing import Any, dict, list
+from typing import Any
 import statistics
 
 # VERSION 3.8.0
