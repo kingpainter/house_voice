@@ -3415,7 +3415,7 @@ class HouseVoicePanel extends HTMLElement {
             </label>
             <select class="filter-select" @change="${(e) => this.analyticsChainFilter = e.target.value}">
               <option value="">All Chains</option>
-              ${this.chains.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              ${this._chains ? Object.entries(this._chains).map(([id, ch]) => `<option value="${id}">${ch.name || id}</option>`).join('') : ''}
             </select>
           </div>
         </div>
