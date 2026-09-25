@@ -16,11 +16,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 def websocket_command(schema):
     """Mock websocket_command decorator."""
     def decorator(func):
+        # Store original function in __wrapped__ for test access
+        func.__wrapped__ = func
         return func
     return decorator
 
 def async_response(func):
-    """Mock async_response decorator - just passes through."""
+    """Mock async_response decorator - adds __wrapped__ for test access."""
+    # Store original function in __wrapped__ for test access
+    func.__wrapped__ = func
     return func
 
 # Apply patches immediately
