@@ -3140,26 +3140,27 @@ class HouseVoicePanel extends HTMLElement {
         })
       ]);
 
-      this._analytics = {
+      this.analyticsData = {
         statistics: stats,
         chainPerformance: perf || [],
-        stepAnalytics: steps || {},
-        timeline: timeline || {}
+        stepAnalytics: steps || [],
+        timeline: timeline || []
       };
 
       this._bottleneckData = this._calculateBottlenecks();
       this._trendData = this._calculateTrends();
       this._heatmapData = this._buildHeatmapData();
       this._loading = false;
+      this.requestUpdate();
     } catch (e) {
       console.error("House Voice: load analytics", e);
-      this._analytics = {};
+      this.analyticsData = {};
       this._loading = false;
     }
   }
 
   _calculateBottlenecks() {
-    const steps = this._analytics.stepAnalytics?.slowest_steps || [];
+    const steps = this.analyticsData?.stepAnalytics?.slowest_steps || [];
     return steps.slice(0, 5).map(s => ({
       name: s.name || s.step_type,
       type: s.step_type,
@@ -3169,7 +3170,7 @@ class HouseVoicePanel extends HTMLElement {
   }
 
   _calculateTrends() {
-    const timeline = this._analytics.timeline?.executions || [];
+    const timeline = this.analyticsData?.timeline?.executions || [];
     const daily = {};
     timeline.forEach(ex => {
       const date = (ex.started || "").split('T')[0];
@@ -3187,9 +3188,9 @@ class HouseVoicePanel extends HTMLElement {
   }
 
   _buildHeatmapData() {
-    const perf = this._analytics.chainPerformance || [];
+    const perf = this.analyticsData?.chainPerformance || [];
     const stepTypes = {};
-    const steps = this._analytics.stepAnalytics || {};
+    const steps = this.analyticsData?.stepAnalytics || {};
     
     if (steps.most_used_steps) {
       steps.most_used_steps.forEach(s => {
@@ -3248,7 +3249,7 @@ class HouseVoicePanel extends HTMLElement {
         </div>
 
         <div class="analytics-content">
-          ${this.isLoadingAnalytics ? `
+          ${this._loading ? `
             <div class="loading-container">
               <div class="spinner"></div>
               <p>Loading analytics...</p>
