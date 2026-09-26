@@ -566,9 +566,13 @@ def ws_list_execution_history(
 # ============================================================================
 
 @websocket_api.websocket_command({
-    "type": f"{DOMAIN}/chain/get_version",
-    vol.Required("chain_id"): str,
-    vol.Required("version_num"): int,
+    "type": "house_voice/query_executions",
+    vol.Optional("chain_id"): str,
+    vol.Optional("status"): vol.In(["in_progress", "completed", "failed", "blocked_condition"]),
+    vol.Optional("start_date"): str,
+    vol.Optional("end_date"): str,
+    vol.Optional("search_text"): str,
+    vol.Optional("limit", default=50): int,
 })
 @callback
 def ws_query_executions(
