@@ -494,7 +494,6 @@ def _get_chain_validator(hass: HomeAssistant) -> Any | None:
     return getattr(entry.runtime_data, "chain_validator", None) if entry else None
 
 
-@websocket_api.websocket_command({"type": f"{DOMAIN}/list_chains"})
 @callback
 def _transform_execution_for_panel(execution: dict) -> dict:
     """Transform execution record to panel format."""
