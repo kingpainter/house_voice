@@ -193,7 +193,8 @@ class HouseVoicePanel extends HTMLElement {
     this._loading = true; this._updateUI();
     try {
       await Promise.all([
-        this._loadTemplates(),        this._loadExecutionHistory(),
+        // this._loadTemplates(),  // Phase 5: Not implemented yet
+        this._loadExecutionHistory(),
         this._loadEvents(),
         this._loadGroups(),
         this._loadConditions(),
