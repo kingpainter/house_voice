@@ -1,4 +1,4 @@
-# VERSION = "3.11.0"
+# VERSION = "3.12.0"
 # File: websocket.py
 # Description: WebSocket API for the House Voice Manager panel.
 #              Commands: get_events, get_media_players, save_event, delete_event,

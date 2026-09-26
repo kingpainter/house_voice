@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.12.0"
 # File: sensor.py
 # Description: Statistics sensor for House Voice Manager – counts TTS messages today
 #              v3.3.1: registers itself on entry.runtime_data instead of hass.data[DOMAIN].

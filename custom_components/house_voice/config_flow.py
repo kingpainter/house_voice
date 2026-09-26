@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.12.0"
 # File: config_flow.py
 # Description: Config Flow + Options Flow for House Voice Manager.
 #              Config flow: no fields – user just clicks Submit to install.

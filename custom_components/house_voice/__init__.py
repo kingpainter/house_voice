@@ -1,4 +1,4 @@
-# VERSION = "3.9.0"
+# VERSION = "3.12.0"
 #              Registers services, WebSocket API, sidebar panel and sensor.
 #              v3.4.0: migrated hass.data[DOMAIN] → entry.runtime_data (HA 2026 best practice).
 

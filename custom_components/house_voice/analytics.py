@@ -1,12 +1,15 @@
-# VERSION 3.8.0
+# VERSION 3.12.0
 """House Voice Analytics Engine — Phase 9 Advanced Analytics Dashboard."""
 
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Any
 import statistics
+import logging
+from .const import DOMAIN
 
-# VERSION 3.8.0
+_LOGGER = logging.getLogger(__name__)
+
 
 class HouseVoiceAnalytics:
     """Advanced analytics and statistics for execution history."""
@@ -125,7 +128,7 @@ class HouseVoiceAnalytics:
                 last_execution: ISO string
             }
         """
-        chains = self.execution_history.hass.data[self.execution_history.domain]["chains"]
+        chains = self.execution_history.hass.data.get(DOMAIN, {}).get("chains", {})
         executions = self.execution_history.list_executions_filtered(
             start_date=start_date,
             end_date=end_date,
@@ -308,8 +311,14 @@ class HouseVoiceAnalytics:
 
             for step in execution.get("steps", []):
                 try:
-                    started = datetime.fromisoformat(step.get("started"))
-                    finished = datetime.fromisoformat(step.get("finished", step.get("started")))
+                    started_str = step.get("started")
+                    finished_str = step.get("finished", step.get("started"))
+                    
+                    if not started_str or not finished_str:
+                        continue  # Skip steps without timestamps
+                    
+                    started = datetime.fromisoformat(started_str)
+                    finished = datetime.fromisoformat(finished_str)
                     duration = (finished - started).total_seconds()
 
                     if earliest_start is None or started < earliest_start:

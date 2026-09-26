@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.12.0"
 # File: system_health.py
 # Description: System Health info for House Voice Manager
 #              v3.3.1: reads from entry.runtime_data instead of hass.data[DOMAIN].

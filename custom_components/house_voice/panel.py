@@ -1,4 +1,4 @@
-# VERSION = "3.3.1"
+# VERSION = "3.12.0"
 # File: panel.py
 # Description: Registers the House Voice Manager sidebar panel as a static
 #              HTTP path and custom web component in Home Assistant.

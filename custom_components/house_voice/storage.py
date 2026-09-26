@@ -1,4 +1,4 @@
-# VERSION = "3.6.0"
+# VERSION = "3.12.0"
 # File: storage.py
 # Description: HA Storage API wrapper for House Voice Manager.
 #              Persists voice events, groups and conditions.
@@ -8,7 +8,7 @@ from __future__ import annotations
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import STORAGE_CONDITIONS_KEY, STORAGE_KEY, STORAGE_VERSION
+from .const import DOMAIN, STORAGE_CONDITIONS_KEY, STORAGE_KEY, STORAGE_VERSION
 import time
 
 
@@ -456,9 +456,19 @@ class HouseVoiceExecutionHistory:
             success_rate = (data["successful"] / data["total"] * 100) if data["total"] > 0 else 0
             avg_duration = sum(data["durations"]) / len(data["durations"]) if data["durations"] else 0
             
+            # Get chain name from chains storage if available
+            chain_name = chain_id
+            try:
+                if self.hass and DOMAIN in self.hass.data:
+                    chains_storage = self.hass.data[DOMAIN].get("chains", {})
+                    if chain_id in chains_storage:
+                        chain_name = chains_storage[chain_id].get("name", chain_id)
+            except Exception:
+                pass  # Fallback to chain_id if lookup fails
+            
             result.append({
                 "chain_id": chain_id,
-                "chain_name": chain_id,  # TODO: lookup from chains storage if available
+                "chain_name": chain_name,  # ← Now resolves from chains storage
                 "executions": data["total"],
                 "success_rate": round(success_rate, 1),
                 "avg_duration_seconds": round(avg_duration, 2),

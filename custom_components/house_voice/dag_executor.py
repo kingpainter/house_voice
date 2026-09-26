@@ -1,4 +1,4 @@
-# VERSION = "3.5.0"
+# VERSION = "3.12.0"
 # Sprint 6: DAG-based parallel chain execution engine
 
 import asyncio

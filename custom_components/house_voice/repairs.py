@@ -1,4 +1,4 @@
-# VERSION = "3.2.0"
+# VERSION = "3.12.0"
 # File: repairs.py
 # Description: Repairs support for House Voice Manager.
 #              Creates a HA repair issue if script.ultra_tts is not found.
