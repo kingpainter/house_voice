@@ -3151,7 +3151,7 @@ class HouseVoicePanel extends HTMLElement {
       this._trendData = this._calculateTrends();
       this._heatmapData = this._buildHeatmapData();
       this._loading = false;
-      this.requestUpdate();
+      this._updateUI();
     } catch (e) {
       console.error("House Voice: load analytics", e);
       this.analyticsData = {};
