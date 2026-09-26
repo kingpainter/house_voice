@@ -707,6 +707,28 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── History tab ────────────────────────────────────────────────────────────
 
+  _historyHTML() {
+    if (!this._execHistory || !this._execHistory.length)
+      return `<div class="empty">Ingen historik endnu.<br>Afspil nogle events for at se historik her.</div>`;
+
+    const rows = this._execHistory.map(exec => {
+      const time = new Date(exec.started).toLocaleString('da-DK');
+      const duration = exec.duration_seconds ? `${Math.round(exec.duration_seconds * 100) / 100}s` : '—';
+      const statusColor = exec.status === 'completed' ? '#10b981' : exec.status === 'failed' ? '#ef4444' : '#f59e0b';
+      const statusLabel = exec.status === 'completed' ? '✓ Afsluttet' : exec.status === 'failed' ? '✕ Fejl' : '⟳ I gang';
+      
+      return `
+        <div class="history-row" data-exec-id="${this._esc(exec.id)}">
+          <div class="history-time">${time}</div>
+          <div class="history-chain">${this._esc(exec.chain_id || 'N/A')}</div>
+          <div class="history-status" style="color:${statusColor}">${statusLabel}</div>
+          <div class="history-duration">${duration}</div>
+          <button class="btn btn-small" data-exec-id="${this._esc(exec.id)}">Detaljer</button>
+        </div>`;
+    }).join("");
+
+    return `<div class="history-table">${rows}</div>`;
+  }
 
   // ── Chain management ───────────────────────────────────────────────────────
 
@@ -1174,7 +1196,10 @@ class HouseVoicePanel extends HTMLElement {
               `}
             </div>
           </div>
-          <div class="tab-bar">            <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
+          <div class="tab-bar">
+            <button class="tab ${isEvents ? 'active' : ''}" data-tab="events">📋 Events</button>
+            <button class="tab ${isGroups ? 'active' : ''}" data-tab="groups">👥 Grupper</button>
+            <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
             <button class="tab ${isAnalytics ? 'active' : ''}" data-tab="analytics">📊 Analyse</button>
           </div>
         </div>
