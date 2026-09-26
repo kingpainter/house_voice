@@ -1,4 +1,4 @@
-# VERSION = "3.12.0"
+# VERSION = "3.13.0"
 #              Registers services, WebSocket API, sidebar panel and sensor.
 #              v3.4.0: migrated hass.data[DOMAIN] → entry.runtime_data (HA 2026 best practice).
 
@@ -29,8 +29,7 @@ from .const import (
 )
 from .groups import HouseVoiceGroups
 from .panel import async_register_panel, async_unregister_panel
-from .storage import HouseVoiceConditions, HouseVoiceStorage, HouseVoiceChains, HouseVoiceExecutionHistory
-from .chain_validator import ChainValidator
+from .storage import HouseVoiceConditions, HouseVoiceStorage, HouseVoiceExecutionHistory
 from .voice_engine import VoiceEngine
 from .websocket import async_register_websocket_commands
 
@@ -54,8 +53,6 @@ class HouseVoiceRuntimeData:
     storage: HouseVoiceStorage
     groups: HouseVoiceGroups
     conditions: HouseVoiceConditions
-    chains: HouseVoiceChains  # Sprint 6: announcement chains
-    chain_validator: ChainValidator  # Sprint 6: chain validation
     execution_history: HouseVoiceExecutionHistory  # Sprint 6: persistent history
     engine: VoiceEngine
     sensor: Any | None = None
@@ -68,15 +65,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     storage     = HouseVoiceStorage(hass)
     groups      = HouseVoiceGroups(hass)
     conditions  = HouseVoiceConditions(hass)
-    chains      = HouseVoiceChains(hass)  # Sprint 6
-    chain_validator = ChainValidator(hass)  # Sprint 6
     execution_history = HouseVoiceExecutionHistory(hass)  # Sprint 6
 
     try:
         await storage.async_load()
         await groups.async_load()
         await conditions.async_load()
-        await chains.async_load()  # Sprint 6
         await execution_history.async_load()  # Sprint 6
     except Exception as err:
         raise ConfigEntryNotReady(
@@ -90,8 +84,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         storage=storage,
         groups=groups,
         conditions=conditions,
-        chains=chains,  # Sprint 6
-        chain_validator=chain_validator,  # Sprint 6
         execution_history=execution_history,  # Sprint 6
         engine=engine,
     )

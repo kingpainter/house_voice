@@ -1,4 +1,4 @@
-# VERSION = "3.12.0"
+# VERSION = "3.13.0"
 # File: ultra_tts.py
 # Description: Native Python TTS executor for House Voice Manager.
 #              Handles volume set, tts.speak, dynamic delay, volume restore.
@@ -86,16 +86,22 @@ class UltraTTS:
                 await self._clear_queue(sibling_map.get(sp, sp))
 
             # Speak
-            await self.hass.services.async_call(
-                "tts", "speak",
-                {
-                    "cache": False,
-                    "message": message,
-                    "media_player_entity_id": speakers[0] if len(speakers) == 1 else speakers,
-                },
-                target={"entity_id": self.tts_entity},
-                blocking=False,
-            )
+            try:
+                await asyncio.wait_for(
+                    self.hass.services.async_call(
+                        "tts", "speak",
+                        {
+                            "cache": False,
+                            "message": message,
+                            "media_player_entity_id": speakers[0] if len(speakers) == 1 else speakers,
+                        },
+                        target={"entity_id": self.tts_entity},
+                        blocking=False,
+                    ),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                _LOGGER.error("UltraTTS: tts.speak timeout for '%s', volume may not restore", speaker)
 
             delay = self._speech_delay(message, heos=is_heos_like)
             _LOGGER.debug("UltraTTS: waiting %.1f s (heos=%s)", delay, is_heos_like)

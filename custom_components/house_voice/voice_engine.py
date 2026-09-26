@@ -1,4 +1,4 @@
-# VERSION = "3.12.0"
+# VERSION = "3.13.0"
 # File: voice_engine.py
 # Description: TTS logic and priority handling for House Voice Manager.
 #              Includes: spam filter, quiet hours (configurable), Jinja2 templates,
@@ -12,7 +12,6 @@ import asyncio
 import logging
 import time
 from collections import deque
-from .dag_executor import DAGExecutor
 from datetime import datetime
 from typing import Any
 
@@ -51,7 +50,6 @@ from .const import (
     HISTORY_MAX_ENTRIES,
 )
 from .ultra_tts import UltraTTS
-from .events.event_chain import EventChainManager, ChainActionType
 from .speaker_control.volume_controller import VolumeControllerV2
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,85 +93,8 @@ class VoiceEngine:
         self._queue_task: asyncio.Task | None = None
 
         # Sprint 2: Event chain manager and volume controller
-        self.event_chain_manager = EventChainManager(hass)
-        self.volume_controller = VolumeControllerV2(hass)
-        self.dag_executor = DAGExecutor(self._execute_step_generic)
-        self._setup_event_chain_handlers()
 
     # ── Sprint 2: Event Chain Setup ────────────────────────────────────────────
-
-    def _setup_event_chain_handlers(self) -> None:
-        """Register event chain action handlers."""
-        async def handle_condition(step, hass):
-            """Handle condition check action from event chain."""
-            from .events.event_chain import handle_condition_check_action
-            return await handle_condition_check_action(step, hass)
-
-        async def handle_announcement(step, hass):
-            """Execute announcement action from event chain."""
-            from .events.event_chain import handle_announcement_action
-            return await handle_announcement_action(step, hass)
-
-        async def handle_volume_up(step, hass):
-            """Execute group volume up action from event chain."""
-            result = await self.volume_controller.increase_group_volume(
-                step.target or "default",
-                step.parameters.get("volume_step", 0.1)
-            )
-            return {
-                "success": result.success,
-                "group_id": result.group_id,
-                "action": result.action,
-                "attempted_count": result.attempted_count,
-                "final_volume": result.final_volume,
-                "fallback_strategy": result.fallback_strategy,
-            }
-
-        async def handle_volume_down(step, hass):
-            """Execute group volume down action from event chain."""
-            result = await self.volume_controller.decrease_group_volume(
-                step.target or "default",
-                step.parameters.get("volume_step", 0.1)
-            )
-            return {
-                "success": result.success,
-                "group_id": result.group_id,
-                "action": result.action,
-                "attempted_count": result.attempted_count,
-                "final_volume": result.final_volume,
-                "fallback_strategy": result.fallback_strategy,
-            }
-
-        async def handle_delay(step, hass):
-            """Execute delay action from event chain."""
-            from .events.event_chain import handle_delay_action
-            return await handle_delay_action(step, hass)
-
-        async def handle_webhook(step, hass):
-            """Execute webhook action from event chain."""
-            from .events.event_chain import handle_webhook_action
-            return await handle_webhook_action(step, hass)
-
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.ANNOUNCEMENT, handle_announcement
-        )
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.GROUP_VOLUME_UP, handle_volume_up
-        )
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.GROUP_VOLUME_DOWN, handle_volume_down
-        )
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.DELAY, handle_delay
-        )
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.CONDITION_CHECK, handle_condition
-        )
-        self.event_chain_manager.register_action_handler(
-            ChainActionType.WEBHOOK, handle_webhook
-        )
-        _LOGGER.debug("Event chain action handlers registered")
-
 
     def start(self) -> None:
         """Start the background queue worker."""
@@ -246,70 +167,6 @@ class VoiceEngine:
             self._queue_task = self.hass.loop.create_task(self._queue_worker())
 
     # ── Public API ─────────────────────────────────────────────────────────────
-
-    async def execute_announcement_chain(
-        self,
-        event_id: str,
-        speakers: list[str],
-        volume_increase: float = 0.1,
-    ) -> None:
-        """Execute an announcement with automatic volume adjustment chain.
-        
-        Creates and executes an event chain that:
-        1. Increases volume by volume_increase
-        2. Plays the announcement
-        3. Delays 2 seconds
-        4. Decreases volume by volume_increase
-        
-        Failures in volume adjustment do not block the announcement.
-        
-        Args:
-            event_id: The ID of the stored voice event
-            speakers: List of speaker entity IDs or group references
-            volume_increase: Amount to increase volume (default 0.1)
-        
-        Raises:
-            ServiceValidationError: If event not found or speakers invalid
-        """
-        from .events.event_chain import create_announcement_chain
-        
-        # Validate event exists
-        event = self.storage.get_event(event_id)
-        if not event:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="event_not_found",
-                translation_placeholders={"event_id": event_id},
-            )
-        
-        # Validate speakers
-        resolved_speakers = self.groups.resolve_speakers(speakers)
-        if not resolved_speakers:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="no_speakers",
-                translation_placeholders={"event_id": event_id},
-            )
-        
-        # For now, use the first speaker group (future: support multiple)
-        group_id = resolved_speakers[0] if resolved_speakers else "default"
-        
-        # Create and register the chain
-        chain_id = f"announcement_chain_{event_id}_{int(time.time())}"
-        steps = create_announcement_chain(event_id, group_id, volume_increase)
-        
-        await self.event_chain_manager.register_chain(chain_id, steps)
-        
-        # Execute the chain
-        execution = await self.event_chain_manager.execute_chain(chain_id)
-        
-        # Log chain execution
-        _LOGGER.info(
-            "Announcement chain '%s' executed: %d succeeded, %d failed",
-            chain_id,
-            len(execution.completed_steps),
-            len(execution.failed_steps),
-        )
 
     async def say(self, event_id: str, bypass_spam: bool = False) -> None:
         """Speak a stored voice event by ID.
@@ -725,142 +582,3 @@ class VoiceEngine:
             _LOGGER.error("House Voice: condition evaluation failed: %s", err)
             return False
 
-    async def _execute_conditional_step(self, step: dict, chain_context: dict) -> dict:
-        """Execute a CONDITION_CHECK step and return result + next step_id."""
-        try:
-            condition = step.get("condition", {})
-            result = await self._evaluate_condition(condition)
-            
-            # Return next step based on result
-            next_step_id = step.get("on_true") if result else step.get("on_false")
-            
-            return {
-                "type": "condition_check",
-                "condition_type": condition.get("type"),
-                "result": result,
-                "next_step_id": next_step_id,
-                "success": True,
-            }
-        
-        except Exception as err:
-            _LOGGER.error("House Voice: conditional step failed: %s", err)
-            return {
-                "type": "condition_check",
-                "success": False,
-                "error": str(err),
-                "next_step_id": None,
-            }
-
-
-    # Sprint 6: Generic step executor for DAG
-    async def _execute_step_generic(self, step: dict, chain_context: dict) -> dict:
-        """Execute any type of step. Used by DAGExecutor for parallel execution."""
-        step_type = step.get("type", "announcement")
-        
-        try:
-            if step_type == "announcement":
-                return await self._execute_announcement_step(step, chain_context)
-            elif step_type == "delay":
-                return await self._execute_delay_step(step)
-            elif step_type == "condition_check":
-                return await self._execute_conditional_step(step, chain_context)
-            elif step_type == "webhook_post":
-                return await self._execute_webhook_step(step)
-            else:
-                return {
-                    "id": step.get("id"),
-                    "type": step_type,
-                    "success": False,
-                    "error": f"Unknown step type: {step_type}",
-                }
-        except Exception as err:
-            return {
-                "id": step.get("id"),
-                "type": step_type,
-                "success": False,
-                "error": str(err),
-            }
-
-    async def _execute_announcement_step(self, step: dict, chain_context: dict) -> dict:
-        """Execute an announcement step."""
-        try:
-            # Placeholder for actual announcement execution
-            # In real implementation, this would call the TTS engine
-            return {
-                "id": step.get("id"),
-                "type": "announcement",
-                "success": True,
-                "message": step.get("message"),
-            }
-        except Exception as err:
-            return {
-                "id": step.get("id"),
-                "type": "announcement",
-                "success": False,
-                "error": str(err),
-            }
-
-    async def _execute_delay_step(self, step: dict) -> dict:
-        """Execute a delay step."""
-        try:
-            delay = step.get("delay_seconds", 1)
-            await asyncio.sleep(delay)
-            return {
-                "id": step.get("id"),
-                "type": "delay",
-                "success": True,
-                "delay_seconds": delay,
-            }
-        except Exception as err:
-            return {
-                "id": step.get("id"),
-                "type": "delay",
-                "success": False,
-                "error": str(err),
-            }
-
-    async def _execute_webhook_step(self, step: dict) -> dict:
-        """Execute a webhook POST step."""
-        try:
-            # Placeholder for webhook execution
-            return {
-                "id": step.get("id"),
-                "type": "webhook_post",
-                "success": True,
-                "url": step.get("url"),
-            }
-        except Exception as err:
-            return {
-                "id": step.get("id"),
-                "type": "webhook_post",
-                "success": False,
-                "error": str(err),
-            }
-
-    async def execute_chain_parallel(self, chain: dict) -> dict:
-        """Execute chain using DAG for parallel execution."""
-        try:
-            chain_context = {
-                "chain_id": chain.get("id"),
-                "started": asyncio.get_event_loop().time(),
-            }
-            
-            result = await self.dag_executor.execute_chain(chain, chain_context)
-            
-            # Record execution in persistent history
-            runtime_data = getattr(self.entry, "runtime_data", None)
-            if runtime_data and hasattr(runtime_data, "execution_history"):
-                await runtime_data.execution_history.async_record_execution({
-                    "chain_id": chain.get("id"),
-                    "status": "completed" if result.get("success") else "failed",
-                    "steps": result.get("steps", []),
-                    "error": result.get("error"),
-                })
-            
-            return result
-        except Exception as err:
-            _LOGGER.error("House Voice: parallel chain execution failed: %s", err)
-            return {
-                "success": False,
-                "error": str(err),
-            }

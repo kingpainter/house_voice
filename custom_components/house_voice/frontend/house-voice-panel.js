@@ -15,7 +15,7 @@ class HouseVoicePanel extends HTMLElement {
     this._conditions    = {};      // { id: { label, entity_id, state } }
     this._players       = [];
     this._history       = [];
-    this._tab           = "events";       // "events" | "groups" | "history" | "chains" | "analytics"
+    this._tab           = "events";       // "events" | "groups" | "history" | "analytics"
     this._editingId     = null;
     this._editingGroup  = null;
     this._editingCond   = null;    // condition_id being edited
@@ -75,9 +75,7 @@ class HouseVoicePanel extends HTMLElement {
     this._loading = true; this._updateUI();
     try {
       await Promise.all([
-        this._loadTemplates(),
-        this._loadChains(),
-        this._loadExecutionHistory(),
+        this._loadTemplates(),        this._loadExecutionHistory(),
         this._loadEvents(),
         this._loadGroups(),
         this._loadConditions(),
@@ -592,28 +590,6 @@ class HouseVoicePanel extends HTMLElement {
 
   // ── Chain management ───────────────────────────────────────────────────────
 
-  async _loadChains() {
-    try {
-      this._chains = await this._hass.callWS({
-        type: "house_voice/list_chains",
-      }) || {};
-      if (Object.keys(this._chains).length > 0) {
-        this._currentChain = Object.keys(this._chains)[0];
-      }
-    } catch (e) {
-      console.error("[House Voice] Error loading chains:", e);
-      this._chains = {};
-    }
-  }
-
-
-
-  _switchChain(chainId) {
-    if (this._chains[chainId]) {
-      this._currentChain = chainId;
-      this._render();
-    }
-  }
 
   async _loadExecutionHistory() {
     try {
@@ -694,8 +670,6 @@ class HouseVoicePanel extends HTMLElement {
         </div>
         
         <div class="chain-switcher">
-          <label class="chain-selector-label">Aktivt Chain:</label>
-          <select id="chain-selector" class="chain-selector">
             <option value="">-- Vælg et chain --</option>
             ${chainIds.map(id => `
               <option value="${this._esc(id)}" ${this._currentChain === id ? 'selected' : ''}>
@@ -738,9 +712,6 @@ class HouseVoicePanel extends HTMLElement {
                 ` : ""}
                 
                 <div class="chain-actions">
-                  <button class="btn btn-small" data-chain-id="${this._esc(id)}">Edit</button>
-                  <button class="btn btn-small" data-chain-id="${this._esc(id)}">Test</button>
-                  <button class="btn btn-small btn-danger" data-chain-id="${this._esc(id)}">Delete</button>
                 </div>
               </div>
             `;
@@ -1253,9 +1224,7 @@ class HouseVoicePanel extends HTMLElement {
 
   _render() {
     const isEvents   = this._tab === "events";
-    const isGroups   = this._tab === "groups";
-    const isChains   = this._tab === "chains";
-    const isHistory  = this._tab === "history";
+    const isGroups   = this._tab === "groups";    const isHistory  = this._tab === "history";
     const isAnalytics = this._tab === "analytics";
 
     this.shadowRoot.innerHTML = `
@@ -1289,11 +1258,7 @@ class HouseVoicePanel extends HTMLElement {
               `}
             </div>
           </div>
-          <div class="tab-bar">
-            <button class="tab ${isEvents  ? 'active' : ''}" data-tab="events">📋 Events</button>
-            <button class="tab ${isGroups  ? 'active' : ''}" data-tab="groups">🔈 Grupper</button>
-            <button class="tab ${isChains  ? 'active' : ''}" data-tab="chains">⛓️ Kæder</button>
-            <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
+          <div class="tab-bar">            <button class="tab ${isHistory ? 'active' : ''}" data-tab="history">🕐 Historik</button>
             <button class="tab ${isAnalytics ? 'active' : ''}" data-tab="analytics">📊 Analyse</button>
           </div>
         </div>
@@ -1313,9 +1278,7 @@ class HouseVoicePanel extends HTMLElement {
           <div class="content-area">
             ${isEvents   ? this._eventListHTML() : ""}
             ${isEvents   ? this._condLibHTML()   : ""}
-            ${isGroups   ? this._groupListHTML() : ""}
-            ${isChains   ? this._chainsHTML()    : ""}
-            ${isHistory  ? this._historyHTML()   : ""}
+            ${isGroups   ? this._groupListHTML() : ""}            ${isHistory  ? this._historyHTML()   : ""}
             ${isAnalytics ? this._analyticsHTML() : ""}
           </div>
         </div>
@@ -1349,17 +1312,6 @@ class HouseVoicePanel extends HTMLElement {
     root.getElementById("btn-reload")?.addEventListener("click",    () => this._reload());
     root.getElementById("btn-export")?.addEventListener("click",    () => this._exportEvents());
     root.getElementById("btn-import")?.addEventListener("click",    () => this._importEvents());
-
-    // Chain switcher listener
-    const chainSelector = root.getElementById("chain-selector");
-    if (chainSelector) {
-      chainSelector.addEventListener("change", (e) => {
-        if (e.target.value) this._switchChain(e.target.value);
-      });
-    }
-
-    // Chain action buttons listeners
-    root.querySelectorAll("[data-chain-id]").forEach(el => {
       const chainId = el.dataset.chainId;
       if (el.textContent.includes("Edit")) {
         el.addEventListener("click", () => {
@@ -1824,11 +1776,9 @@ class HouseVoicePanel extends HTMLElement {
       margin-bottom: 20px; padding: 12px;
       background: var(--bg2); border-radius: 10px;
     }
-    .chain-selector-label {
       font-size: 12px; font-weight: 600; color: var(--sub);
       text-transform: uppercase; letter-spacing: 0.05em;
     }
-    .chain-selector {
       flex: 1; padding: 8px 12px; border: 1px solid var(--div);
       border-radius: 8px; background: var(--bg3); color: var(--text);
       font-family: 'DM Sans', sans-serif; font-size: 14px; cursor: pointer;
@@ -3278,7 +3228,6 @@ class HouseVoicePanel extends HTMLElement {
       });
 
       this._showNotification(`✓ Chain '${chainName}' oprettet fra template`, "success");
-      await this._loadChains();
       this._render();
     } catch (e) {
       console.error("[House Voice] Error creating chain from template:", e);
@@ -3313,7 +3262,7 @@ class HouseVoicePanel extends HTMLElement {
         }),
         this._hass.callWS({
           type: "house_voice/get_execution_timeline",
-          chain_id: this._analyticsFilters.chainId || Object.keys(this._chains)[0] || "all",
+          chain_id: this._analyticsFilters.chainId || "all",
           limit: 50
         })
       ]);
