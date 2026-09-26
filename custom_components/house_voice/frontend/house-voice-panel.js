@@ -521,7 +521,7 @@ class HouseVoicePanel extends HTMLElement {
     if (!ids.length)
       return `<div class="empty">Ingen events matcher "<strong>${this._esc(this._searchQuery)}</strong>".</div>`;
 
-    return ids.map(id => {
+    const eventCards = ids.map(id => {
       const ev = filtered[id];
       const speakers = (ev.speakers || []).map(s =>
         s.startsWith("group:") ? `🔈 ${s.replace("group:", "")}` : s
@@ -551,6 +551,8 @@ class HouseVoicePanel extends HTMLElement {
           </div>
         </div>`;
     }).join("");
+    
+    return `<div class="events-grid">${eventCards}</div>`;
   }
 
   // ── Groups tab ─────────────────────────────────────────────────────────────
@@ -1352,6 +1354,8 @@ class HouseVoicePanel extends HTMLElement {
       display: flex; flex-direction: column; gap: 8px; transition: border-color 0.2s;
     }
     .event-card:hover { border-color: rgba(148,163,184,0.28); }
+    .events-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (max-width: 600px) { .events-grid { grid-template-columns: 1fr; } }
     .event-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .event-id { font-size: 14px; font-weight: 600; font-family: 'DM Mono', monospace; color: var(--accent); }
     .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
