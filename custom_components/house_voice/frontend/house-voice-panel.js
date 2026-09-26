@@ -3143,7 +3143,13 @@ class HouseVoicePanel extends HTMLElement {
 
       this.analyticsData = {
         statistics: stats,
-        chainPerformance: perf || [],
+        chainPerformance: (perf || []).map(chain => ({
+          ...chain,
+          name: chain.chain_name,
+          successRate: chain.success_rate,
+          avgDuration: chain.avg_duration_seconds,
+          lastRun: chain.last_execution
+        })),
         stepAnalytics: steps || [],
         timeline: timeline || []
       };
