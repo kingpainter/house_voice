@@ -29,8 +29,6 @@ def hass_with_panel_data(mock_hass, mock_entry):
         engine=MagicMock(),
         sensor=None,
         panel_registered=False,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
     mock_hass.config = MagicMock()
     mock_hass.config.path = MagicMock(return_value="/config/custom_components")
@@ -136,8 +134,6 @@ def test_unregister_panel_clears_flag(mock_hass, mock_entry):
         engine=MagicMock(),
         sensor=None,
         panel_registered=True,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.panel.frontend.async_remove_panel") as mock_remove:
@@ -158,8 +154,6 @@ def test_unregister_panel_skips_if_not_registered(mock_hass, mock_entry):
         engine=MagicMock(),
         sensor=None,
         panel_registered=False,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.panel.frontend.async_remove_panel") as mock_remove:

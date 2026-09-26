@@ -25,8 +25,6 @@ async def test_diagnostics_returns_correct_fields(mock_hass, mock_storage, sampl
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=sensor,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
@@ -55,8 +53,6 @@ async def test_diagnostics_quiet_hours_active(mock_hass, mock_storage):
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=None,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.voice_engine.dt_util") as mock_dt:
@@ -79,8 +75,6 @@ async def test_diagnostics_handles_missing_storage(mock_hass):
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=None,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:
@@ -106,8 +100,6 @@ async def test_diagnostics_handles_missing_sensor(mock_hass, mock_storage):
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=None,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
 
     with patch("custom_components.house_voice.diagnostics.dt_util") as mock_dt:

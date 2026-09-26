@@ -564,15 +564,7 @@ def ws_list_execution_history(
 # PHASE 7 WEBSOCKET COMMANDS: Versioning, Batch, Parallel, Conditions
 # ============================================================================
 
-@websocket_api.websocket_command({
-    "type": "house_voice/query_executions",
-    vol.Optional("chain_id"): str,
-    vol.Optional("status"): vol.In(["in_progress", "completed", "failed", "blocked_condition"]),
-    vol.Optional("start_date"): str,
-    vol.Optional("end_date"): str,
-    vol.Optional("search_text"): str,
-    vol.Optional("limit", default=50): int,
-})
+@websocket_api.websocket_command({"type": f"{DOMAIN}/query_executions"})
 @callback
 def ws_query_executions(
     hass: HomeAssistant,
@@ -620,12 +612,7 @@ def ws_query_executions(
         _LOGGER.exception("House Voice WS error (query_executions)")
         connection.send_error(msg["id"], "unknown_error", str(err))
 
-
-@websocket_api.websocket_command({
-    "type":                    f"{DOMAIN}/get_execution_detail",
-    vol.Optional("id"):        int,
-    vol.Required("exec_id"):   str,
-})
+@websocket_api.websocket_command({"type": f"{DOMAIN}/get_execution_detail"})
 @callback
 def ws_get_execution_detail(
     hass: HomeAssistant,

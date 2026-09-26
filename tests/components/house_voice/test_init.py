@@ -29,8 +29,6 @@ async def test_async_setup_entry_registers_services(mock_hass, mock_config_entry
     with patch("custom_components.house_voice.HouseVoiceStorage") as mock_storage_cls, \
          patch("custom_components.house_voice.HouseVoiceGroups") as mock_groups_cls, \
          patch("custom_components.house_voice.HouseVoiceConditions") as mock_cond_cls, \
-         patch("custom_components.house_voice.HouseVoiceChains") as mock_chains_cls, \
-         patch("custom_components.house_voice.ChainValidator") as mock_validator_cls, \
          patch("custom_components.house_voice.HouseVoiceExecutionHistory") as mock_history_cls, \
          patch("custom_components.house_voice.VoiceEngine") as mock_engine_cls, \
          patch("custom_components.house_voice.async_register_panel", new=AsyncMock()), \
@@ -52,15 +50,7 @@ async def test_async_setup_entry_registers_services(mock_hass, mock_config_entry
         mock_cond.data = {}
         mock_cond_cls.return_value = mock_cond
 
-        # Sprint 6: chains, validator, and execution history
-        mock_chains = MagicMock()
-        mock_chains.async_load = AsyncMock()
-        mock_chains.data = {}
-        mock_chains_cls.return_value = mock_chains
-
-        mock_validator = MagicMock()
-        mock_validator_cls.return_value = mock_validator
-
+        # Sprint 6: execution history
         mock_history = MagicMock()
         mock_history.async_load = AsyncMock()
         mock_history_cls.return_value = mock_history
@@ -92,8 +82,6 @@ async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
     with patch("custom_components.house_voice.HouseVoiceStorage") as mock_storage_cls, \
          patch("custom_components.house_voice.HouseVoiceGroups") as mock_groups_cls, \
          patch("custom_components.house_voice.HouseVoiceConditions") as mock_cond_cls, \
-         patch("custom_components.house_voice.HouseVoiceChains") as mock_chains_cls, \
-         patch("custom_components.house_voice.ChainValidator") as mock_validator_cls, \
          patch("custom_components.house_voice.HouseVoiceExecutionHistory") as mock_history_cls, \
          patch("custom_components.house_voice.VoiceEngine") as mock_engine_cls, \
          patch("custom_components.house_voice.async_register_panel", new=AsyncMock()), \
@@ -115,15 +103,7 @@ async def test_async_setup_entry_stores_data(mock_hass, mock_config_entry):
         mock_cond.data = {}
         mock_cond_cls.return_value = mock_cond
 
-        # Sprint 6: chains, validator, and execution history
-        mock_chains = MagicMock()
-        mock_chains.async_load = AsyncMock()
-        mock_chains.data = {}
-        mock_chains_cls.return_value = mock_chains
-
-        mock_validator = MagicMock()
-        mock_validator_cls.return_value = mock_validator
-
+        # Sprint 6: execution history
         mock_history = MagicMock()
         mock_history.async_load = AsyncMock()
         mock_history_cls.return_value = mock_history
@@ -148,8 +128,6 @@ async def test_async_unload_entry_removes_services(mock_hass, mock_config_entry)
         storage=MagicMock(),
         groups=MagicMock(),
         conditions=MagicMock(),
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),
         engine=mock_engine,
         sensor=None,

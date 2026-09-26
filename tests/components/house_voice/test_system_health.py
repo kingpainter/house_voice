@@ -21,8 +21,6 @@ async def test_system_health_info_returns_correct_fields(mock_hass, mock_storage
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=None,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
     mock_hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
@@ -45,8 +43,6 @@ async def test_system_health_info_no_storage(mock_hass):
         conditions=MagicMock(),
         engine=MagicMock(),
         sensor=None,
-        chains=MagicMock(),
-        chain_validator=MagicMock(),
         execution_history=MagicMock(),)
     mock_hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
