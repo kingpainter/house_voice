@@ -2,7 +2,7 @@
 
 A Home Assistant custom integration that centralizes all text-to-speech (TTS) output in your home. Instead of calling media players directly in automations, you define named voice events and trigger them with a single service call.
 
-**Version:** 3.9.0 | **Platform:** Home Assistant | **Setup:** UI only (no YAML) | **Quality:** 🥈 Silver
+**Version:** 3.13.0 | **Platform:** Home Assistant | **Setup:** UI only (no YAML) | **Quality:** 🥈 Silver
 
 ---
 
@@ -20,7 +20,6 @@ A Home Assistant custom integration that centralizes all text-to-speech (TTS) ou
 - 🔍 **Search** – filter events by ID or message
 - 📥📤 **Import/Export** – backup and restore all events as JSON
 - 📜 **History** – last 50 TTS calls with status (`spoken`, `blocked_spam`, `blocked_quiet_hours`, `blocked_condition`)
-- 🔗 **Chain Execution History** (Phase 8) – filter & search chain runs by date, status, name; expandable detail rows with step-by-step results; JSON export
 - 🩺 **System Health** – integration status visible in HA System Health panel
 - 🔬 **Diagnostics** – downloadable diagnostics from HA UI
 - 🛠️ **Repairs** – HA UI alert if TTS fails
