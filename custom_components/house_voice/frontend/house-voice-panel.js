@@ -31,9 +31,6 @@ class HouseVoicePanel extends HTMLElement {
     this._lastRenderKey = null;  // for render memoization   // global loading state for WS calls
     this._errors        = {};      // { fieldName: 'error message' }
     this._dialog        = null;    // { type: 'export'|'import'|'name', data: {...} }
-    this._chains        = {};      // { chainId: { name, status, steps, ... } }
-    this._templates     = {};      // { templateId: { name, description, steps } }
-    this._currentChain  = null;    // currently active chain
     this._execHistory   = [];      // [ { chainId, timestamp, steps, success, duration } ]
     this._analytics      = {};      // { statistics: {...}, chainPerf: [...], stepAnalytics: {...}, timeline: {...} }
     this._analyticsFilters = {
@@ -629,14 +626,6 @@ class HouseVoicePanel extends HTMLElement {
     this._render();
   }
 
-  _getChainStatus(chainId) {
-    const chain = this._chains[chainId];
-    if (!chain) return "unknown";
-    if (chain.status === "active") return "active";
-    if (chain.status === "published") return "published";
-    return "draft";
-  }
-
   _formatTimestamp(timestamp) {
     if (!timestamp) return "–";
     const date = new Date(timestamp);
@@ -655,202 +644,6 @@ class HouseVoicePanel extends HTMLElement {
     if (days < 7) return `${days} d siden`;
     
     return date.toLocaleDateString("da-DK");
-  }
-
-  _chainsHTML() {
-    const chainIds = Object.keys(this._chains);
-    if (!chainIds.length)
-      return `<div class="empty">Ingen kæder endnu. Opret en ny kæde ved at klikke på 'Nyt Chain'.</div>`;
-
-    return `
-      <div class="chains-container">
-        <div class="chains-header">
-          <h3>Announcement Chains</h3>
-          <button class="btn btn-primary" id="btn-new-chain">+ Nyt Chain</button>
-        </div>
-        
-        <div class="chain-switcher">
-            <option value="">-- Vælg et chain --</option>
-            ${chainIds.map(id => `
-              <option value="${this._esc(id)}" ${this._currentChain === id ? 'selected' : ''}>
-                ${this._esc(this._chains[id].name || id)}
-              </option>
-            `).join("")}
-          </select>
-        </div>
-
-        <div class="chains-list">
-          ${chainIds.map(id => {
-            const chain = this._chains[id];
-            const status = this._getChainStatus(id);
-            const statusColors = { active: "#10b981", published: "#3b82f6", draft: "#8b5cf6" };
-            const recentExecs = this._execHistory.filter(e => e.chainId === id).slice(0, 5);
-
-            return `
-              <div class="chain-card">
-                <div class="chain-header">
-                  <div class="chain-info">
-                    <h4 class="chain-name">${this._esc(chain.name || id)}</h4>
-                    <span class="chain-status status-${status}" style="background-color: ${statusColors[status]}">
-                      ${status}
-                    </span>
-                  </div>
-                  <div class="chain-steps">
-                    <small>${chain.steps ? chain.steps.length : 0} steps</small>
-                  </div>
-                </div>
-                
-                ${recentExecs.length > 0 ? `
-                  <div class="chain-recent-execs">
-                    <small>Recent executions:</small>
-                    ${recentExecs.map(exec => `
-                      <span class="exec-badge ${exec.success ? 'success' : 'error'}">
-                        ${exec.success ? '✓' : '✗'} ${this._formatTimestamp(exec.timestamp)}
-                      </span>
-                    `).join("")}
-                  </div>
-                ` : ""}
-                
-                <div class="chain-actions">
-                </div>
-              </div>
-            `;
-          }).join("")}
-        </div>
-      </div>
-    `;
-  }
-
-
-    _historyHTML() {
-    const { chainId, status, searchText } = this._historyFilters;
-    
-    return `
-      <div class="history-container">
-        <!-- Filter Panel -->
-        <div class="history-filters">
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Kæde:</label>
-              <select id="history-filter-chain" class="filter-select" title="Filtrer efter chain">
-                <option value="">-- Alle kæder --</option>
-                ${Object.keys(this._chains).map(id => `
-                  <option value="${id}" ${chainId === id ? 'selected' : ''}>
-                    ${this._esc(this._chains[id].name)}
-                  </option>
-                `).join('')}
-              </select>
-            </div>
-            
-            <div class="filter-group">
-              <label>Status:</label>
-              <select id="history-filter-status" class="filter-select" title="Filtrer efter status">
-                <option value="">-- Alle --</option>
-                <option value="completed" ${status === 'completed' ? 'selected' : ''}>✓ Afsluttet</option>
-                <option value="failed" ${status === 'failed' ? 'selected' : ''}>✗ Fejl</option>
-                <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>⟳ I gang</option>
-                <option value="blocked_condition" ${status === 'blocked_condition' ? 'selected' : ''}>⊘ Blokeret</option>
-              </select>
-            </div>
-            
-            <div class="filter-group">
-              <label>Søg:</label>
-              <input type="text" id="history-filter-search" class="filter-input" title="Søg i historikken" 
-                placeholder="Søg i trinnavne..." value="${this._esc(searchText)}">
-            </div>
-            
-            <button id="history-apply-filters" class="btn btn-small">Anvend</button>
-            <button id="history-reset-filters" class="btn btn-small">Nulstil</button>
-          </div>
-        </div>
-
-        <!-- Execution History Table -->
-        <div class="history-table-wrapper">
-          ${this._execHistory.length > 0 ? `
-            <table class="history-table">
-              <thead>
-                <tr>
-                  <th>Tid</th>
-                  <th>Kæde</th>
-                  <th>Status</th>
-                  <th>Trin</th>
-                  <th>Varighed</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${this._execHistory.map(exec => {
-                  const isSelected = this._selectedExecDetail === exec.id;
-                  const statusIcon = this._getStatusIcon(exec.status);
-                  const chainName = exec.chain_id && this._chains[exec.chain_id] 
-                    ? this._chains[exec.chain_id].name 
-                    : exec.chain_id || 'Ukendt';
-                  const duration = exec.duration_seconds 
-                    ? Math.round(exec.duration_seconds * 1000) + 'ms'
-                    : '–';
-                  const stepCount = exec.steps ? exec.steps.length : 0;
-                  
-                  return `
-                    <tr class="history-row ${isSelected ? 'selected' : ''}" data-exec-id="${exec.id}">
-                      <td class="col-time">${this._formatTimestamp(exec.started)}</td>
-                      <td class="col-chain">${this._esc(chainName)}</td>
-                      <td class="col-status"><span class="status-badge ${exec.status}">${statusIcon} ${exec.status}</span></td>
-                      <td class="col-steps">${stepCount} trin</td>
-                      <td class="col-duration">${duration}</td>
-                      <td class="col-expand">
-                        <button class="btn-expand" data-exec-id="${exec.id}" title="Vis detaljer">▼</button>
-                      </td>
-                    </tr>
-                    ${isSelected && exec.steps ? `
-                      <tr class="detail-row">
-                        <td colspan="6">
-                          <div class="execution-detail">
-                            <div class="detail-header">
-                              <h4>Udførelsesdetaljer</h4>
-                              <button class="btn btn-small" id="btn-export-exec-${exec.id}">📥 Eksporter JSON</button>
-                            </div>
-                            <div class="steps-table">
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th>#</th>
-                                    <th>Trin-ID</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Varighed</th>
-                                    <th>Besked</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  ${exec.steps.map((step, idx) => `
-                                    <tr class="step-detail-row">
-                                      <td>${idx + 1}</td>
-                                      <td class="step-id">${this._esc(step.id || '–')}</td>
-                                      <td>${this._esc(step.type || 'action')}</td>
-                                      <td><span class="step-status ${step.status || 'unknown'}">${step.status || '?'}</span></td>
-                                      <td>${step.duration_ms ? Math.round(step.duration_ms) + 'ms' : '–'}</td>
-                                      <td class="step-message">${this._esc(step.message || step.error || '–')}</td>
-                                    </tr>
-                                  `).join('')}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ` : ''}
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-          ` : `
-            <div class="empty-state">
-              <p>Ingen udførelseshistorik fundet</p>
-            </div>
-          `}
-        </div>
-      </div>
-    `;
   }
 
   _getStatusIcon(status) {
@@ -1312,32 +1105,7 @@ class HouseVoicePanel extends HTMLElement {
     root.getElementById("btn-reload")?.addEventListener("click",    () => this._reload());
     root.getElementById("btn-export")?.addEventListener("click",    () => this._exportEvents());
     root.getElementById("btn-import")?.addEventListener("click",    () => this._importEvents());
-      const chainId = el.dataset.chainId;
-      if (el.textContent.includes("Edit")) {
-        el.addEventListener("click", () => {
-          // TODO: Open chain editor
-          console.log("Edit chain:", chainId);
-        });
-      }
-      if (el.textContent.includes("Test")) {
-        el.addEventListener("click", () => {
-          // TODO: Test chain execution
-          console.log("Test chain:", chainId);
-        });
-      }
-      if (el.textContent.includes("Delete")) {
-        el.addEventListener("click", () => {
-          // TODO: Delete chain
-          console.log("Delete chain:", chainId);
-        });
-      }
-    });
-
     // New chain button
-    root.getElementById("btn-new-chain")?.addEventListener("click", () => {
-      // Show template selector to create new chain
-      this._showTemplateSelector();
-    });
 
 
     // History filter listeners
@@ -3153,55 +2921,7 @@ class HouseVoicePanel extends HTMLElement {
       this._templates = result.templates || {};
     } catch (e) {
       console.error("[House Voice] Error loading chain templates:", e);
-      this._templates = {};
     }
-  }
-
-  _showTemplateSelector() {
-    const templateIds = Object.keys(this._templates || {});
-    if (!templateIds.length) {
-      alert("Ingen templates tilgængelige");
-      return;
-    }
-
-    const html = `
-      <div class="template-selector-modal">
-        <h3>Vælg Chain Template</h3>
-        <div class="template-list">
-          ${templateIds.map(id => {
-            const tmpl = this._templates[id];
-            return `
-              <div class="template-card" data-template-id="${this._esc(id)}">
-                <h4>${this._esc(tmpl.name)}</h4>
-                <p>${this._esc(tmpl.description)}</p>
-                <small>${tmpl.step_count} steps</small>
-              </div>
-            `;
-          }).join("")}
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-secondary" id="btn-cancel-template">Annuller</button>
-        </div>
-      </div>
-    `;
-
-    const modal = document.createElement("div");
-    modal.className = "modal";
-    modal.innerHTML = html;
-    this.shadowRoot.appendChild(modal);
-
-    // Event listeners
-    document.querySelectorAll(".template-card").forEach(card => {
-      card.addEventListener("click", () => {
-        const templateId = card.dataset.templateId;
-        this._createChainFromTemplate(templateId);
-        modal.remove();
-      });
-    });
-
-    document.getElementById("btn-cancel-template").addEventListener("click", () => {
-      modal.remove();
-    });
   }
 
   async _createChainFromTemplate(templateId) {
