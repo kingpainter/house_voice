@@ -3143,7 +3143,7 @@ class HouseVoicePanel extends HTMLElement {
 
       this.analyticsData = {
         statistics: stats,
-        chainPerformance: (perf || []).map(chain => ({
+        chainPerformance: (perf?.chains || []).map(chain => ({
           ...chain,
           name: chain.chain_name,
           successRate: chain.success_rate,
@@ -3177,7 +3177,7 @@ class HouseVoicePanel extends HTMLElement {
   }
 
   _calculateTrends() {
-    const timeline = this.analyticsData?.timeline?.executions || [];
+    const timeline = this.analyticsData?.timeline || [];
     const daily = {};
     timeline.forEach(ex => {
       const date = (ex.started || "").split('T')[0];
